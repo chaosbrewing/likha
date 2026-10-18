@@ -1,0 +1,21 @@
+{
+  "name": "origin-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @studio/core && npm run build -w @studio/cli",
+    "cli": "npm run dev -w @studio/cli",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --import tsx --test \"packages/core/test/**/*.test.ts\" \"apps/cli/test/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
