@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "types": ["vite/client"],
+    "paths": {
+      "@studio/contracts": ["../../packages/contracts/src/index.ts"],
+      "@studio/editor": ["../../packages/editor/src/index.ts"],
+      "@studio/core": ["../../packages/core/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}

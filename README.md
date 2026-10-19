@@ -1,12 +1,68 @@
 # Origin Studio
 
-Origin Studio is a development platform and custom IDE being built under Chaos Origins.
-This repository is an npm-workspaces monorepo containing its shared core, its desktop
-IDE (not yet started) and its command-line interface, **`chaos`**.
+Origin Studio is a development platform and desktop IDE being built under Chaos Origins.
+This npm-workspaces monorepo contains:
+
+- **Origin Studio IDE**: a Windows desktop editor (Electron, React, Monaco, xterm.js). It
+  opens a local project, edits and saves files, manages files and folders, and runs commands
+  in an integrated terminal.
+- **`chaos`**: the command-line tool that creates and inspects Origin Studio projects.
+- Shared packages that both apps build on.
+
+Everything runs locally. No ORIGIN account or internet connection is needed.
+
+## Origin Studio IDE
+
+### Start it
+
+```powershell
+npm install
+npm run build
+npm run ide
+```
+
+`npm run ide` starts the built app. It reopens the last folder you had open; otherwise it
+shows a welcome screen with **Open Folder…**. To open a specific folder at launch:
+
+```powershell
+npm run ide -- --folder=C:\path\to\project
+```
+
+For development with hot reload of the interface:
+
+```powershell
+npm run ide:dev
+```
+
+Changes under `apps/ide/electron` need a restart of `ide:dev`.
+
+### What it does
+
+| Area | Features |
+|---|---|
+| Workspace | Open Folder (Ctrl+O). Reopens the last folder. The status bar shows the folder, whether it is a valid Origin Studio project, and the Git branch |
+| Explorer | Folder tree with expand/collapse and keyboard navigation (arrows, Enter, F2 to rename, Del to delete). New File, New Folder, Rename, Delete, Refresh and Collapse All. Unsaved files are marked |
+| Editor | Monaco: tabs, syntax highlighting, line numbers, completion, TypeScript/JavaScript diagnostics, find (Ctrl+F), unsaved-change indicators. Save (Ctrl+S), Save As (Ctrl+Shift+S), Save All, Close Tab (Ctrl+W), Ctrl+Tab to switch tabs |
+| Safety | Saves are checked against the version on disk. If another program changed the file, you choose Overwrite, Reload from Disk or Cancel. Binary, non-UTF-8 and >5 MB files are not opened. Closing a tab or the app with unsaved changes asks first. Deletes ask first and go to the Recycle Bin. Names are validated (Windows-reserved names and characters are rejected), and create or rename never overwrites anything |
+| Terminal | Real shells through node-pty: PowerShell 7, Windows PowerShell and Command Prompt. Multiple sessions, resize and kill. Terminals open in the project folder. **Run** executes a `package.json` script (`npm run <name>`). All shells end when the app closes |
+| Panels | Terminal, Output (activity log) and Problems (diagnostics from open files; click one to jump to it) |
+| Window | Size, position and maximized state are remembered and kept on a visible screen |
+
+The `chaos` CLI works in the integrated terminal as in any other terminal. In a Windows
+PowerShell 5.1 terminal, use `chaos.cmd` if the execution policy blocks `chaos` (the
+terminal prints this hint). PowerShell 7 terminals are not affected. Origin Studio never
+changes the execution policy.
+
+### Architecture and security
+
+[docs/architecture.md](docs/architecture.md) describes the package boundaries, the process
+model and the security controls (sandboxed renderer, isolated preload, validated IPC,
+workspace path confinement, strict CSP). Future ORIGIN connection points are in
+[docs/integration/README.md](docs/integration/README.md).
 
 ## The `chaos` CLI
 
-`chaos` is the Origin Studio command-line tool. In this first version it can:
+`chaos` is the Origin Studio command-line tool. It can:
 
 | Command | What it does |
 |---|---|
@@ -65,8 +121,8 @@ A folder is an Origin Studio project when its `package.json` contains a valid
 "originStudio": { "schemaVersion": 1, "language": "typescript" }
 ```
 
-`chaos status` validates that section and checks for `package.json`, `tsconfig.json` and
-`src/index.ts`. Having a `package.json` is not enough.
+`chaos status` and the IDE's status bar validate that section and check for
+`package.json`, `tsconfig.json` and `src/index.ts`. Having a `package.json` is not enough.
 
 ### Exit codes
 
@@ -78,55 +134,9 @@ A folder is an Origin Studio project when its `package.json` contains a valid
 
 Errors are written to stderr and start with `Error:`.
 
-## Repository layout
+### Installing the `chaos` command
 
-```text
-origin-studio/
-├── apps/
-│   ├── cli/                    @studio/cli — the `chaos` command
-│   │   ├── src/
-│   │   │   ├── index.ts        entry point and command routing
-│   │   │   ├── errors.ts       exit codes and user-facing errors
-│   │   │   ├── version.ts      reads the version from package.json
-│   │   │   └── commands/       help.ts, status.ts, init.ts
-│   │   ├── test/cli.test.ts    tests that run the compiled CLI
-│   │   ├── dist/               build output (git-ignored)
-│   │   └── tsconfig.build.json
-│   └── ide/                    @studio/ide — desktop IDE (placeholder)
-├── packages/
-│   └── core/                   @studio/core — shared logic, no filesystem access
-│       ├── src/                name validation, project config checks, starter templates
-│       ├── test/
-│       └── tsconfig.build.json
-├── package.json                origin-studio (workspace root)
-└── tsconfig.json               editor/typecheck config for the whole repo
-```
-
-## Requirements
-
-- Windows 10/11 (macOS and Linux should also work but haven't been verified)
-- Node.js 20 or newer (verified with Node.js 24.18.0 and npm 11.16.0)
-- No global TypeScript or `tsx` needed: both are local dev dependencies, and the
-  installed CLI runs as plain compiled JavaScript.
-
-## Local development
-
-From the repository root in PowerShell:
-
-```powershell
-npm install          # installs dev tools and links the @studio/* workspaces
-npm run build        # compiles packages/core and apps/cli to dist/
-npm run typecheck    # type-checks everything without emitting
-npm test             # builds, then runs core and compiled-CLI tests
-npm run cli -- status   # runs the CLI from TypeScript source via tsx (no build needed)
-```
-
-`npm run build` must run before the compiled CLI can be used, because `@studio/cli`
-imports `@studio/core` from `packages/core/dist`.
-
-## Installing the `chaos` command
-
-### Option A: global link (recommended for development)
+Global link (recommended for development):
 
 ```powershell
 npm install
@@ -137,60 +147,124 @@ chaos --version
 
 `npm link` adds `chaos`, `chaos.cmd` and `chaos.ps1` to your global npm folder
 (`npm config get prefix`, usually `%AppData%\npm`) and points them at this checkout, so
-rebuilding (`npm run build`) updates the command immediately. To remove it:
+rebuilding updates the command immediately. To remove it: `npm unlink -g @studio/cli`.
 
-```powershell
-npm unlink -g @studio/cli
-```
-
-### Option B: project-local, no global changes
-
-After `npm install` and `npm run build`, run `npm install` once more so npm links the
-newly built bin, then:
-
-```powershell
-npx chaos status
-.\node_modules\.bin\chaos.cmd --version
-```
+Project-local, with no global changes: after `npm install` and `npm run build`, run
+`npm install` once more so npm links the newly built bin, then use `npx chaos status` or
+`.\node_modules\.bin\chaos.cmd --version`.
 
 ### Windows PowerShell 5.1 and execution policy
 
 npm creates a `chaos.ps1` shim, and PowerShell prefers it over `chaos.cmd`. Under
-Windows' default `Restricted` execution policy, **Windows PowerShell 5.1** refuses to run it:
-
-```text
-chaos : File ...\npm\chaos.ps1 cannot be loaded because running scripts is disabled on this system.
-```
-
-(npm's own `npm.ps1` hits the same restriction.) Any one of these works:
+Windows' default `Restricted` execution policy, **Windows PowerShell 5.1** refuses to run it
+(npm's own `npm.ps1` hits the same restriction). Any one of these works:
 
 - Use **PowerShell 7** (`pwsh`), whose default policy (`RemoteSigned`) allows it.
 - Run `chaos.cmd` instead of `chaos`, e.g. `chaos.cmd status`.
-- Allow local scripts for your user account (your decision, it changes a security setting):
-  `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+- Allow local scripts for your user account. This is your decision, because it changes a
+  security setting: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
 
 `cmd.exe` is not affected.
 
+## Repository layout
+
+```text
+origin-studio/
+├── apps/
+│   ├── cli/                  @studio/cli: the `chaos` command
+│   └── ide/                  @studio/ide: desktop IDE
+│       ├── electron/         main process: window, menu, IPC, protocol, terminals, preload
+│       ├── src/              interface (React): components/, features/, hooks/, styles/
+│       ├── scripts/          build and dev launchers (Vite + esbuild)
+│       ├── test/             host unit tests
+│       └── e2e/              end-to-end test of the built app (Playwright)
+├── packages/
+│   ├── contracts/            @studio/contracts: host API, IPC channels, shared types, ORIGIN interfaces
+│   ├── core/                 @studio/core: validation, project config, starter templates
+│   ├── workspace/            @studio/workspace: safe file operations, project inspection
+│   ├── editor/               @studio/editor: tab and unsaved-change state, languages
+│   └── origin-adapter/       @studio/origin-adapter: offline ORIGIN adapters and test mocks
+├── docs/
+│   ├── architecture.md
+│   └── integration/README.md
+├── package.json              origin-studio (workspace root)
+└── tsconfig.json             typecheck config for packages, CLI and IDE host
+```
+
+## Requirements
+
+- Windows 10/11. The IDE and CLI are verified on Windows 11; other platforms are untested.
+- Node.js 22.12 or newer for development (verified with Node.js 24.18.0 and npm 11.16.0).
+- Network access for the first `npm install`, which downloads Electron (`install-electron`
+  runs as the root `postinstall`).
+- No global TypeScript, tsx or Electron needed.
+
+## Development commands
+
+From the repository root in PowerShell:
+
+```powershell
+npm install             # dependencies, workspace links, Electron binary
+npm run build           # all packages, the CLI and the IDE (apps/ide/dist)
+npm run typecheck       # packages, CLI, IDE host and IDE interface
+npm test                # builds, then runs all unit tests (packages, CLI, IDE host)
+npm run test:e2e        # end-to-end test of the built IDE (opens app windows briefly)
+npm run ide             # start the built IDE
+npm run ide:dev         # start the IDE with hot reload
+npm run cli -- status   # run the CLI from source via tsx
+```
+
 ## Known limitations
 
-- `chaos init` has a single TypeScript starter. There are no templates, options or prompts.
+IDE:
+
+- Not packaged as an installer yet; it runs from this checkout with `npm run ide`.
+- One window and one workspace at a time. A second launch focuses the existing window.
+- No file watching. The explorer updates after IDE operations and on **Refresh**; external
+  edits to open files are detected when you save.
+- TypeScript/JavaScript intelligence covers open files only (there is no project-wide
+  language server), so "Cannot find module" errors are suppressed.
+- Renaming a file to a different extension keeps the original type-checking mode until the
+  tab is reopened.
+- Text files must be UTF-8 (with or without BOM) and at most 5 MB.
+- Terminal: no shell integration (command exit codes are not tracked) and no split panes.
+- `npm run test:e2e` moves one temporary file to the Recycle Bin per run, because it tests
+  the real delete.
+- Monaco 0.57 pins DOMPurify 3.4.15, which has low-severity advisories. The root
+  `overrides` entry upgrades it to 3.4.17, and `npm audit` reports 0 vulnerabilities.
+
+CLI:
+
+- `chaos init` has a single TypeScript starter, with no templates, options or prompts.
 - `chaos init` does not run `npm install` or `git init` for you.
 - Starter dependencies (`typescript ^7.0.2`, `@types/node ^26.6.5`) follow this repository's
   toolchain, and `npm install` in a new project needs network access or a warm npm cache.
 - The CLI is not published to a registry; it is installed from this checkout.
-- Only Windows has been verified. The code uses `node:path` throughout and is intended
-  to be cross-platform.
-- `npm run cli -- <command>` runs inside `apps/cli` (npm workspace behaviour), so
-  `status` and `init` act on that folder. Use the installed `chaos` command for real work.
-- `@studio/ide` is an empty placeholder.
-- `npm install` warns that `esbuild` (used by `tsx`, development only) has install scripts
-  not yet approved with `npm approve-scripts`. Builds and tests work without approving it.
+- `npm run cli -- <command>` runs inside `apps/cli` (npm workspace behaviour), so `status`
+  and `init` act on that folder. Use the installed `chaos` command for real work.
 
-## Next milestone
+General:
 
-Connect the CLI to the desktop IDE through `@studio/core` rather than by shelling out:
-the IDE's "New project" flow and project indicator should call the same
-`validateProjectName`, `getStarterFiles` and `checkProjectManifest` functions used by
-`chaos init` and `chaos status`. A sensible first step is to move the small filesystem
-pieces (`inspectProject`, the safe write loop in `init.ts`) into a Node-only core module
-both apps can import.
+- `npm install` warns that `esbuild` and `node-pty` have install scripts not approved with
+  `npm approve-scripts`. Neither needs them here: esbuild ships its binary as a package, and
+  node-pty ships prebuilt Windows binaries.
+
+## Future milestones (out of scope for Phase 4)
+
+AI coding agents, cloud workspaces, remote deployment, an extension marketplace,
+collaborative editing, debugger integration, ORIGIN account synchronization, and live
+Binhi, Tala, Agos and Liyab connections. Their boundaries are defined in
+[docs/integration/README.md](docs/integration/README.md); none of them is connected.
+
+## Next milestone (Phase 5 recommendation)
+
+Make the IDE releasable and connect it to project creation:
+
+1. Package a signed Windows installer (electron-builder or Electron Forge), with node-pty
+   unpacked from the archive, and verify installation on a clean machine.
+2. Add **New Project** to the IDE using `@studio/core` (`validateProjectName`,
+   `getStarterFiles`) and the same create-only write rules as `chaos init`.
+3. Watch the open workspace for external changes: refresh the explorer, and show a "file
+   changed on disk" notice for open tabs.
+4. Start the ORIGIN Core adapter behind a feature flag: link a local folder to an ORIGIN
+   project id, read-only.

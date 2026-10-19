@@ -1,0 +1,22 @@
+{
+  "name": "@studio/origin-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ORIGIN integration adapters for Origin Studio. Currently offline adapters and test mocks only.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@studio/contracts": "0.1.0"
+  }
+}

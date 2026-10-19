@@ -2,6 +2,7 @@ import { validateProjectName } from "./project-name.js";
 
 export * from "./studio.js";
 export * from "./project-name.js";
+export * from "./entry-name.js";
 export * from "./project-config.js";
 export * from "./project-template.js";
 

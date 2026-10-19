@@ -8,14 +8,25 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @studio/core && npm run build -w @studio/cli",
+    "build": "npm run build:packages && npm run build -w @studio/cli && npm run build -w @studio/ide",
+    "build:packages": "npm run build -w @studio/contracts && npm run build -w @studio/core && npm run build -w @studio/workspace && npm run build -w @studio/editor && npm run build -w @studio/origin-adapter",
     "cli": "npm run dev -w @studio/cli",
-    "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --import tsx --test \"packages/core/test/**/*.test.ts\" \"apps/cli/test/**/*.test.ts\""
+    "ide": "npm run start -w @studio/ide --",
+    "ide:dev": "npm run dev -w @studio/ide --",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p apps/ide/tsconfig.json",
+    "test": "npm run build && node --import tsx --test --test-force-exit \"packages/*/test/**/*.test.ts\" \"apps/cli/test/**/*.test.ts\" \"apps/ide/test/**/*.test.ts\"",
+    "test:e2e": "node --import tsx --test --test-force-exit \"apps/ide/e2e/**/*.test.ts\"",
+    "postinstall": "install-electron"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
-  }
+  },
+  "overrides": {
+    "monaco-editor": {
+      "dompurify": "3.4.17"
+    }
+  },
+  "packageManager": "pnpm@12.14.0+sha512.c18ba6d87993d3d164cb5e8948f32b2c06ee854487e06cd8d86781342fb3e5bb4634367034711e86802baa9c37bea906ce1929ad08d70884c97d801df13389a6"
 }

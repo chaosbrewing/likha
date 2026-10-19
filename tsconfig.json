@@ -1,4 +1,3 @@
-
 {
   "compilerOptions": {
     "target": "ES2022",
@@ -10,15 +9,34 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "paths": {
+      "@studio/contracts": [
+        "./packages/contracts/src/index.ts"
+      ],
       "@studio/core": [
         "./packages/core/src/index.ts"
+      ],
+      "@studio/workspace": [
+        "./packages/workspace/src/index.ts"
+      ],
+      "@studio/editor": [
+        "./packages/editor/src/index.ts"
+      ],
+      "@studio/origin-adapter": [
+        "./packages/origin-adapter/src/index.ts"
       ]
     }
   },
   "include": [
     "apps/**/*.ts",
     "packages/**/*.ts"
+  ],
+  "exclude": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "apps/ide/src/**"
   ]
 }

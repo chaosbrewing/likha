@@ -1,0 +1,423 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { RelativePath, StudioHostApi, WorkspaceInfo } from "@studio/contracts";
+import { validateEntryName } from "@studio/core";
+import { activeDocument, dirtyDocuments, isDirty, isSameOrInside, languageLabel } from "@studio/editor";
+import { BottomPanel, type OutputEntry, type PanelTab, type Problem } from "./components/BottomPanel";
+import { StatusBar } from "./components/StatusBar";
+import { useDialogs } from "./features/dialogs/useDialogs";
+import { EditorPane } from "./features/editor/EditorPane";
+import { monaco } from "./features/editor/monaco";
+import { useDocuments } from "./features/editor/useDocuments";
+import { Explorer, IconButton } from "./features/explorer/Explorer";
+import { useExplorer } from "./features/explorer/useExplorer";
+import { TerminalPanel, type TerminalPanelApi } from "./features/terminal/TerminalPanel";
+import { useShortcuts, type ShortcutCommand } from "./hooks/useShortcuts";
+
+let outputId = 0;
+
+function parentOf(path: RelativePath): RelativePath {
+  const index = path.lastIndexOf("/");
+  return index === -1 ? "" : path.slice(0, index);
+}
+
+export function App({ host }: { host: StudioHostApi }) {
+  const dialogs = useDialogs();
+  const [output, setOutput] = useState<OutputEntry[]>([]);
+  const [status, setStatus] = useState("Ready");
+  const log = useCallback((level: "info" | "error", message: string) => {
+    setOutput((entries) => [...entries.slice(-499), { id: ++outputId, time: new Date().toLocaleTimeString(), level, message }]);
+    setStatus(message);
+  }, []);
+
+  const documents = useDocuments({ host, dialogs, log });
+  const explorer = useExplorer(host);
+  const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);
+  const [started, setStarted] = useState(false);
+  const [panelVisible, setPanelVisible] = useState(true);
+  const [panelTab, setPanelTab] = useState<PanelTab>("terminal");
+  const [panelHeight, setPanelHeight] = useState(260);
+  const [cursor, setCursor] = useState<{ line: number; column: number } | null>(null);
+  const [problems, setProblems] = useState<Problem[]>([]);
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const terminalApi = useRef<TerminalPanelApi | null>(null);
+
+  const active = activeDocument(documents.state);
+  const dirtyPaths = useMemo(() => new Set(dirtyDocuments(documents.state).map((d) => d.path)), [documents.state]);
+
+  const applyWorkspace = useCallback(
+    (info: WorkspaceInfo) => {
+      setWorkspace(info);
+      document.title = `${info.name} - Origin Studio`;
+      void explorer.reset();
+    },
+    [explorer]
+  );
+
+  const refreshInfo = useCallback(async () => {
+    const result = await host.workspace.refreshInfo();
+    if (result.ok) setWorkspace(result.value);
+  }, [host]);
+
+  useEffect(() => {
+    void host.workspace.current().then((result) => {
+      if (result.ok && result.value) {
+        applyWorkspace(result.value);
+        log("info", `Opened ${result.value.rootPath}`);
+      }
+      setStarted(true);
+    });
+    // Run once on start-up.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ---------- problems from Monaco markers ---------- */
+
+  useEffect(() => {
+    const update = () => {
+      const list: Problem[] = [];
+      for (const [path, entry] of documents.models) {
+        for (const marker of monaco.editor.getModelMarkers({ resource: entry.model.uri })) {
+          list.push({
+            path,
+            line: marker.startLineNumber,
+            column: marker.startColumn,
+            message: marker.message,
+            severity: marker.severity === monaco.MarkerSeverity.Error ? "error" : marker.severity === monaco.MarkerSeverity.Warning ? "warning" : "info"
+          });
+        }
+      }
+      setProblems(list);
+    };
+    update();
+    const subscription = monaco.editor.onDidChangeMarkers(update);
+    return () => subscription.dispose();
+  }, [documents.models, documents.state.documents]);
+
+  /* ---------- workspace operations ---------- */
+
+  const requireWorkspace = useCallback(async () => {
+    if (!workspace) {
+      await dialogs.notify("No folder open", "Open a folder first (File > Open Folder, or Ctrl+O).");
+      return false;
+    }
+    return true;
+  }, [dialogs, workspace]);
+
+  const targetFolder = useCallback((): RelativePath => {
+    const selected = explorer.selected;
+    if (selected === null) return "";
+    const entry = explorer.entry(selected);
+    return entry?.kind === "directory" ? selected : parentOf(selected);
+  }, [explorer]);
+
+  const openFolder = useCallback(async () => {
+    if (!(await documents.resolveUnsaved("open another folder"))) return;
+    const result = await host.workspace.openFolderDialog();
+    if (!result.ok) {
+      log("error", result.error.message);
+      await dialogs.notify("Could not open folder", result.error.message);
+      return;
+    }
+    if (result.value === null) return;
+    documents.closeAll();
+    applyWorkspace(result.value);
+    log("info", `Opened ${result.value.rootPath}`);
+  }, [applyWorkspace, dialogs, documents, host, log]);
+
+  const createEntry = useCallback(
+    async (kind: "file" | "folder") => {
+      if (!(await requireWorkspace())) return;
+      const parent = targetFolder();
+      const name = await dialogs.prompt({
+        title: kind === "file" ? "New File" : "New Folder",
+        label: `Name (in ${parent === "" ? "the workspace root" : parent})`,
+        initialValue: "",
+        confirmLabel: "Create",
+        validate: (value) => {
+          const result = validateEntryName(value);
+          return result.valid ? null : result.reason;
+        }
+      });
+      if (name === null) return;
+      const result = kind === "file" ? await host.workspace.createFile(parent, name) : await host.workspace.createFolder(parent, name);
+      if (!result.ok) {
+        log("error", result.error.message);
+        await dialogs.notify(`Could not create ${kind}`, result.error.message);
+        return;
+      }
+      if (parent === "") await explorer.reload("");
+      else await explorer.expand(parent);
+      explorer.select(result.value.path);
+      log("info", `Created ${result.value.path}`);
+      if (kind === "file") await documents.openFile(result.value.path);
+    },
+    [dialogs, documents, explorer, host, log, requireWorkspace, targetFolder]
+  );
+
+  const renameEntry = useCallback(
+    async (path: RelativePath) => {
+      const oldName = path.slice(path.lastIndexOf("/") + 1);
+      const name = await dialogs.prompt({
+        title: "Rename",
+        label: `New name for "${oldName}"`,
+        initialValue: oldName,
+        confirmLabel: "Rename",
+        validate: (value) => {
+          const result = validateEntryName(value);
+          return result.valid ? null : result.reason;
+        }
+      });
+      if (name === null || name === oldName) return;
+      const result = await host.workspace.rename(path, name);
+      if (!result.ok) {
+        log("error", result.error.message);
+        await dialogs.notify("Could not rename", result.error.message);
+        return;
+      }
+      documents.renamed(path, result.value.path);
+      explorer.collapse(path);
+      await explorer.reload(parentOf(path));
+      explorer.select(result.value.path);
+      log("info", `Renamed ${path} to ${result.value.path}`);
+    },
+    [dialogs, documents, explorer, host, log]
+  );
+
+  const deleteEntry = useCallback(
+    async (path: RelativePath) => {
+      const entry = explorer.entry(path);
+      const unsaved = [...dirtyPaths].filter((p) => isSameOrInside(p, path)).length;
+      const what = entry?.kind === "directory" ? `the folder "${path}" and everything in it` : `"${path}"`;
+      const choice = await dialogs.choose({
+        title: "Delete",
+        message: `Move ${what} to the Recycle Bin?`,
+        detail:
+          (unsaved > 0 ? `${unsaved} open file(s) with unsaved changes will be closed and those changes lost. ` : "") +
+          "You can restore it from the Recycle Bin.",
+        buttons: [
+          { id: "delete", label: "Move to Recycle Bin", variant: "danger" },
+          { id: "cancel", label: "Cancel", variant: "primary" }
+        ],
+        cancelId: "cancel"
+      });
+      if (choice !== "delete") return;
+      const result = await host.workspace.delete(path, true);
+      if (!result.ok) {
+        log("error", result.error.message);
+        await dialogs.notify("Could not delete", result.error.message);
+        return;
+      }
+      documents.deleted(path);
+      explorer.collapse(path);
+      explorer.select(null);
+      await explorer.reload(parentOf(path));
+      log("info", `Moved ${path} to the Recycle Bin`);
+    },
+    [dialogs, dirtyPaths, documents, explorer, host, log]
+  );
+
+  const openFile = useCallback(
+    async (path: RelativePath) => {
+      if (await documents.openFile(path)) setStatus(path);
+    },
+    [documents]
+  );
+
+  const showTerminal = useCallback(async () => {
+    setPanelVisible(true);
+    setPanelTab("terminal");
+    // Let the panel render so the terminal can measure itself.
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  }, []);
+
+  /* ---------- commands (menu, shortcuts, buttons) ---------- */
+
+  const runCommand = useCallback(
+    async (command: ShortcutCommand) => {
+      const path = documents.state.activePath;
+      switch (command) {
+        case "open-folder":
+          return openFolder();
+        case "new-file":
+          return createEntry("file");
+        case "new-folder":
+          return createEntry("folder");
+        case "save":
+          if (path !== null && (await documents.save(path)) && path === "package.json") await refreshInfo();
+          return;
+        case "save-as":
+          if (path !== null) {
+            const target = await documents.saveAs(path);
+            if (target) await explorer.reload(parentOf(target));
+          }
+          return;
+        case "save-all":
+          await documents.saveAll();
+          return;
+        case "close-tab":
+          if (path !== null) await documents.requestClose(path);
+          return;
+        case "next-tab":
+        case "previous-tab": {
+          const list = documents.state.documents;
+          const index = list.findIndex((d) => d.path === path);
+          const next = list[(index + (command === "next-tab" ? 1 : -1) + list.length) % list.length];
+          if (next) documents.activate(next.path);
+          return;
+        }
+        case "refresh-explorer":
+          await explorer.refresh();
+          await refreshInfo();
+          return;
+        case "toggle-panel":
+          setPanelVisible((visible) => !visible);
+          return;
+        case "new-terminal":
+          await showTerminal();
+          await terminalApi.current?.newTerminal();
+          return;
+        case "find":
+          editorRef.current?.focus();
+          await editorRef.current?.getAction("actions.find")?.run();
+          return;
+        case "about": {
+          const info = await host.app.info();
+          await dialogs.notify(
+            info.productName,
+            `Version ${info.version}`,
+            `Electron ${info.versions.electron} · Chromium ${info.versions.chrome} · Node.js ${info.versions.node}\nRuns locally. No ORIGIN account or internet connection is required.`
+          );
+          return;
+        }
+      }
+    },
+    [createEntry, dialogs, documents, explorer, host, openFolder, refreshInfo, showTerminal]
+  );
+
+  const commandRef = useRef(runCommand);
+  commandRef.current = runCommand;
+  useShortcuts((command) => void commandRef.current(command), !dialogs.isOpen);
+
+  useEffect(() => host.app.onMenuCommand((command) => void commandRef.current(command)), [host]);
+
+  const resolveRef = useRef(documents.resolveUnsaved);
+  resolveRef.current = documents.resolveUnsaved;
+  useEffect(
+    () =>
+      host.app.onCloseRequested(async () => {
+        const allow = await resolveRef.current("close Origin Studio");
+        await host.app.confirmClose(allow);
+      }),
+    [host]
+  );
+
+  const openProblem = useCallback(
+    async (problem: Problem) => {
+      if (!(await documents.openFile(problem.path))) return;
+      requestAnimationFrame(() => {
+        const editor = editorRef.current;
+        editor?.setPosition({ lineNumber: problem.line, column: problem.column });
+        editor?.revealLineInCenter(problem.line);
+        editor?.focus();
+      });
+    },
+    [documents]
+  );
+
+  const emptyHint = (
+    <div className="hint">
+      <p>Select a file in the Explorer to open it.</p>
+      <dl className="shortcut-list">
+        <dt>Ctrl+N</dt>
+        <dd>New file</dd>
+        <dt>Ctrl+S</dt>
+        <dd>Save</dd>
+        <dt>Ctrl+W</dt>
+        <dd>Close tab</dd>
+        <dt>Ctrl+`</dt>
+        <dd>Toggle panel</dd>
+        <dt>Ctrl+Shift+`</dt>
+        <dd>New terminal</dd>
+      </dl>
+    </div>
+  );
+
+  return (
+    <div className="app" style={{ gridTemplateRows: `40px 1fr ${panelVisible ? `${panelHeight}px` : "0px"} 24px` }}>
+      <header className="title-bar">
+        <span className="brand">ORIGIN STUDIO</span>
+        <span className="title-workspace">{workspace ? workspace.name : ""}</span>
+        <div className="toolbar">
+          <IconButton icon="codicon-folder-opened" label="Open Folder (Ctrl+O)" onClick={() => void runCommand("open-folder")} />
+          <IconButton icon="codicon-save" label="Save (Ctrl+S)" disabled={!active || !isDirty(active)} onClick={() => void runCommand("save")} />
+          <IconButton icon="codicon-terminal" label="New Terminal (Ctrl+Shift+`)" onClick={() => void runCommand("new-terminal")} />
+          <IconButton icon="codicon-layout-panel" label="Toggle Panel (Ctrl+`)" onClick={() => void runCommand("toggle-panel")} />
+        </div>
+      </header>
+
+      {workspace ? (
+        <main className="workbench">
+          <Explorer
+            title={workspace.name}
+            explorer={explorer}
+            dirtyPaths={dirtyPaths}
+            onOpenFile={(path) => void openFile(path)}
+            onNewFile={() => void createEntry("file")}
+            onNewFolder={() => void createEntry("folder")}
+            onRename={(path) => void renameEntry(path)}
+            onDelete={(path) => void deleteEntry(path)}
+          />
+          <EditorPane
+            documents={documents.state.documents}
+            activePath={documents.state.activePath}
+            model={active ? documents.modelFor(active.path) : null}
+            onActivate={documents.activate}
+            onClose={(path) => void documents.requestClose(path)}
+            onCursor={setCursor}
+            editorRef={editorRef}
+            emptyHint={emptyHint}
+          />
+        </main>
+      ) : (
+        <main className="welcome">
+          {started ? (
+            <div className="welcome-card">
+              <h1>Origin Studio</h1>
+              <p>Open a project folder to browse, edit and run it.</p>
+              <button type="button" className="button primary large" onClick={() => void runCommand("open-folder")}>
+                Open Folder…
+              </button>
+              <p className="welcome-note">Everything runs on this computer. No account or internet connection is needed.</p>
+              <p className="welcome-note">
+                New project? Run <code>chaos init my-project</code> in a terminal, then open the folder.
+              </p>
+            </div>
+          ) : null}
+        </main>
+      )}
+
+      <div className="panel-slot">
+        <BottomPanel
+          tab={panelTab}
+          onTab={setPanelTab}
+          onHide={() => setPanelVisible(false)}
+          height={panelHeight}
+          onResize={setPanelHeight}
+          output={output}
+          problems={problems}
+          onOpenProblem={(problem) => void openProblem(problem)}
+          terminal={<TerminalPanel host={host} visible={panelVisible && panelTab === "terminal"} scripts={workspace?.scripts ?? []} apiRef={terminalApi} log={log} />}
+        />
+      </div>
+
+      <StatusBar
+        workspace={workspace}
+        language={active ? languageLabel(active.language) : null}
+        cursor={active ? cursor : null}
+        dirtyCount={dirtyPaths.size}
+        message={status}
+      />
+      {dialogs.element}
+    </div>
+  );
+}

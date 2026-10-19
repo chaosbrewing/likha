@@ -18,6 +18,7 @@
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
-    "@studio/core": "0.1.0"
+    "@studio/core": "0.1.0",
+    "@studio/workspace": "0.1.0"
   }
 }
