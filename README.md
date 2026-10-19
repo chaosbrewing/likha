@@ -13,7 +13,23 @@ Everything runs locally. No ORIGIN account or internet connection is needed.
 
 ## Origin Studio IDE
 
-### Start it
+### Install it (Windows)
+
+```powershell
+npm install
+npm run build
+npm run package
+```
+
+This produces `apps/ide/release/dist/OriginStudio-Setup-<version>.exe`, a per-user installer
+(no administrator rights needed), and `apps/ide/release/dist/win-unpacked/OriginStudio.exe`,
+a portable copy. The installer puts the app in `%LocalAppData%\Programs\OriginStudio`, adds Start Menu and
+desktop shortcuts, and registers an uninstaller in **Settings > Apps** ("Origin Studio").
+Settings and logs live in `%AppData%\Origin Studio`; the uninstaller leaves them in place. It is
+not code-signed, so Windows SmartScreen shows a warning on first run; see
+[Code signing](#code-signing).
+
+### Start it from the checkout
 
 ```powershell
 npm install
@@ -40,7 +56,8 @@ Changes under `apps/ide/electron` need a restart of `ide:dev`.
 
 | Area | Features |
 |---|---|
-| Workspace | Open Folder (Ctrl+O). Reopens the last folder. The status bar shows the folder, whether it is a valid Origin Studio project, and the Git branch |
+| Workspace | Open Folder (Ctrl+O) and **New Project** (File menu or the welcome screen), which creates the same starter as `chaos init` and opens it. Reopens the last folder. The status bar shows the folder, whether it is a valid Origin Studio project, and the Git branch |
+| Watching | Changes made by other programs are picked up: the explorer updates by itself, an open file without unsaved edits follows the disk, and a file with unsaved edits shows a notice with **Reload from Disk** / **Keep My Version**. A file deleted outside the IDE is reported in its tab |
 | Explorer | Folder tree with expand/collapse and keyboard navigation (arrows, Enter, F2 to rename, Del to delete). New File, New Folder, Rename, Delete, Refresh and Collapse All. Unsaved files are marked |
 | Editor | Monaco: tabs, syntax highlighting, line numbers, completion, TypeScript/JavaScript diagnostics, find (Ctrl+F), unsaved-change indicators. Save (Ctrl+S), Save As (Ctrl+Shift+S), Save All, Close Tab (Ctrl+W), Ctrl+Tab to switch tabs |
 | Safety | Saves are checked against the version on disk. If another program changed the file, you choose Overwrite, Reload from Disk or Cancel. Binary, non-UTF-8 and >5 MB files are not opened. Closing a tab or the app with unsaved changes asks first. Deletes ask first and go to the Recycle Bin. Names are validated (Windows-reserved names and characters are rejected), and create or rename never overwrites anything |
@@ -53,11 +70,21 @@ PowerShell 5.1 terminal, use `chaos.cmd` if the execution policy blocks `chaos` 
 terminal prints this hint). PowerShell 7 terminals are not affected. Origin Studio never
 changes the execution policy.
 
+### Code signing
+
+`npm run package` signs the installer and executables only when a certificate is configured
+through electron-builder's standard variables (`WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD`,
+or a certificate in the Windows certificate store selected with `WIN_CSC_SUBJECT_NAME`).
+Without one, the build is unsigned and SmartScreen warns on first run. Signing needs a
+publisher certificate that only Chaos Origins can obtain; nothing in the repository
+contains or needs a key.
+
 ### Architecture and security
 
 [docs/architecture.md](docs/architecture.md) describes the package boundaries, the process
-model and the security controls (sandboxed renderer, isolated preload, validated IPC,
-workspace path confinement, strict CSP). Future ORIGIN connection points are in
+model, the security controls (sandboxed renderer, isolated preload, validated IPC,
+workspace path confinement, strict CSP) and the release hardening (Electron fuses,
+integrity-checked `app.asar`). Future ORIGIN connection points are in
 [docs/integration/README.md](docs/integration/README.md).
 
 ## The `chaos` CLI
@@ -209,6 +236,8 @@ npm run build           # all packages, the CLI and the IDE (apps/ide/dist)
 npm run typecheck       # packages, CLI, IDE host and IDE interface
 npm test                # builds, then runs all unit tests (packages, CLI, IDE host)
 npm run test:e2e        # end-to-end test of the built IDE (opens app windows briefly)
+npm run package         # Windows installer + portable folder in apps/ide/release/dist
+npm run test:package    # smoke test of the packaged OriginStudio.exe
 npm run ide             # start the built IDE
 npm run ide:dev         # start the IDE with hot reload
 npm run cli -- status   # run the CLI from source via tsx
@@ -218,10 +247,13 @@ npm run cli -- status   # run the CLI from source via tsx
 
 IDE:
 
-- Not packaged as an installer yet; it runs from this checkout with `npm run ide`.
+- The installer is unsigned until a publisher certificate is configured (see
+  [Code signing](#code-signing)). There is no auto-update.
+- Only a 64-bit Windows build is produced. The code is platform-neutral, but macOS and
+  Linux packages have not been built or tested.
 - One window and one workspace at a time. A second launch focuses the existing window.
-- No file watching. The explorer updates after IDE operations and on **Refresh**; external
-  edits to open files are detected when you save.
+- File watching relies on Windows change notifications; a large burst of changes (for
+  example `npm install`) is reported as "refresh everything" rather than file by file.
 - TypeScript/JavaScript intelligence covers open files only (there is no project-wide
   language server), so "Cannot find module" errors are suppressed.
 - Renaming a file to a different extension keeps the original type-checking mode until the
@@ -245,9 +277,14 @@ CLI:
 
 General:
 
-- `npm install` warns that `esbuild` and `node-pty` have install scripts not approved with
-  `npm approve-scripts`. Neither needs them here: esbuild ships its binary as a package, and
-  node-pty ships prebuilt Windows binaries.
+- `npm install` warns that `esbuild`, `node-pty` and `electron-winstaller` have install
+  scripts not approved with `npm approve-scripts`. None is needed here: esbuild ships its
+  binary as a package, node-pty ships prebuilt Windows binaries, and electron-winstaller
+  (a dependency of electron-builder) is not used because the installer is NSIS.
+- `npm audit` reports moderate findings that are all one advisory in `sprintf-js`, counted
+  once per package in the chain that reaches it (electron-builder's proxy support,
+  `global-agent`). It is development tooling for packaging; nothing in the shipped app or
+  the CLI depends on it, and no fixed version is available yet.
 
 ## Future milestones (out of scope for Phase 4)
 
@@ -256,15 +293,13 @@ collaborative editing, debugger integration, ORIGIN account synchronization, and
 Binhi, Tala, Agos and Liyab connections. Their boundaries are defined in
 [docs/integration/README.md](docs/integration/README.md); none of them is connected.
 
-## Next milestone (Phase 5 recommendation)
+## Next milestone (Phase 6 recommendation)
 
-Make the IDE releasable and connect it to project creation:
-
-1. Package a signed Windows installer (electron-builder or Electron Forge), with node-pty
-   unpacked from the archive, and verify installation on a clean machine.
-2. Add **New Project** to the IDE using `@studio/core` (`validateProjectName`,
-   `getStarterFiles`) and the same create-only write rules as `chaos init`.
-3. Watch the open workspace for external changes: refresh the explorer, and show a "file
-   changed on disk" notice for open tabs.
-4. Start the ORIGIN Core adapter behind a feature flag: link a local folder to an ORIGIN
-   project id, read-only.
+1. Obtain a publisher certificate and sign releases; then add auto-update (electron-updater
+   works with the NSIS target already produced).
+2. Start the ORIGIN Core adapter behind a feature flag: link a local folder to an ORIGIN
+   project id, read-only, with the status bar showing the connection state.
+3. Project-wide TypeScript intelligence (a language server in a utility process), so
+   imports between files resolve and the Problems panel covers the whole project.
+4. A CI workflow that runs `npm test`, `npm run test:e2e`, `npm run package` and
+   `npm run test:package` on a Windows runner.

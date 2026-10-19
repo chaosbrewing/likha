@@ -1,4 +1,4 @@
-import { useCallback, useReducer, useRef } from "react";
+import { useCallback, useReducer, useRef, useState } from "react";
 import type { RelativePath, StudioHostApi } from "@studio/contracts";
 import {
   closeNeedsConfirmation,
@@ -21,8 +21,16 @@ interface ModelEntry {
   listener: monaco.IDisposable;
 }
 
+export type ExternalChange = "changed" | "deleted";
+
 export interface Documents {
   state: EditorState;
+  /** Open files that changed or disappeared on disk while they had unsaved edits. */
+  external: Readonly<Record<RelativePath, ExternalChange>>;
+  /** Compares open files with the disk after a change notification (null = all). */
+  checkDisk(paths: RelativePath[] | null): Promise<void>;
+  dismissExternal(path: RelativePath): void;
+  reloadFromDisk(path: RelativePath): Promise<boolean>;
   models: ReadonlyMap<RelativePath, ModelEntry>;
   modelFor(path: RelativePath): monaco.editor.ITextModel | null;
   pathForUri(uri: monaco.Uri): RelativePath | null;
@@ -56,6 +64,16 @@ export function useDocuments({ host, dialogs, log }: Deps): Documents {
   const stateRef = useRef(state);
   stateRef.current = state;
   const models = useRef(new Map<RelativePath, ModelEntry>()).current;
+  const [external, setExternal] = useState<Record<RelativePath, ExternalChange>>({});
+  const saving = useRef(new Set<RelativePath>()).current;
+
+  const markExternal = useCallback((path: RelativePath, change: ExternalChange | null) => {
+    setExternal((current) => {
+      if ((current[path] ?? null) === change) return current;
+      const { [path]: _removed, ...rest } = current;
+      return change === null ? rest : { ...rest, [path]: change };
+    });
+  }, []);
 
   const disposeModel = useCallback(
     (path: RelativePath) => {
@@ -132,10 +150,11 @@ export function useDocuments({ host, dialogs, log }: Deps): Documents {
       }
       entry.model.setValue(result.value.content);
       dispatch({ type: "saved", path, diskVersion: result.value.version, editVersion: entry.model.getAlternativeVersionId() });
+      markExternal(path, null);
       log("info", `Reloaded ${path} from disk`);
       return true;
     },
-    [dialogs, host, log, models]
+    [dialogs, host, log, markExternal, models]
   );
 
   const save = useCallback(
@@ -150,7 +169,8 @@ export function useDocuments({ host, dialogs, log }: Deps): Documents {
       const write = (overwrite: boolean) =>
         host.workspace.writeFile(path, content, { expectedVersion: document.diskVersion, bom: document.hasBom, overwrite });
 
-      let result = await write(false);
+      saving.add(path);
+      let result = await write(false).finally(() => saving.delete(path));
       if (!result.ok && result.error.code === "CONFLICT") {
         const choice = await dialogs.choose({
           title: "File changed on disk",
@@ -164,7 +184,8 @@ export function useDocuments({ host, dialogs, log }: Deps): Documents {
           cancelId: "cancel"
         });
         if (choice === "overwrite") {
-          result = await write(true);
+          saving.add(path);
+          result = await write(true).finally(() => saving.delete(path));
         } else {
           if (choice === "reload") {
             await reloadFromDisk(path);
@@ -178,10 +199,11 @@ export function useDocuments({ host, dialogs, log }: Deps): Documents {
         return false;
       }
       dispatch({ type: "saved", path: entry.holder.path, diskVersion: result.value.version, editVersion });
+      markExternal(entry.holder.path, null);
       log("info", `Saved ${path}`);
       return true;
     },
-    [dialogs, host, log, models, reloadFromDisk]
+    [dialogs, host, log, markExternal, models, reloadFromDisk, saving]
   );
 
   const saveAs = useCallback(
@@ -228,9 +250,43 @@ export function useDocuments({ host, dialogs, log }: Deps): Documents {
   const close = useCallback(
     (path: RelativePath) => {
       disposeModel(path);
+      markExternal(path, null);
       dispatch({ type: "close", path });
     },
-    [disposeModel]
+    [disposeModel, markExternal]
+  );
+
+  const checkDisk = useCallback(
+    async (paths: RelativePath[] | null) => {
+      for (const document of stateRef.current.documents) {
+        const path = document.path;
+        if (paths !== null && !paths.some((changed) => isSameOrInside(path, changed))) continue;
+        if (saving.has(path)) continue; // Our own save; its result updates the version.
+        const result = await host.workspace.readFile(path);
+        const current = findDocument(stateRef.current, path);
+        const entry = models.get(path);
+        if (!current || !entry || saving.has(path)) continue;
+        if (!result.ok) {
+          if (result.error.code === "NOT_FOUND") markExternal(path, "deleted");
+          continue;
+        }
+        const file = result.value;
+        if (file.kind === "text" && file.version === current.diskVersion) {
+          markExternal(path, null);
+          continue;
+        }
+        if (file.kind === "text" && !isDirty(current)) {
+          // No unsaved edits to lose: follow the disk, as most editors do.
+          entry.model.setValue(file.content);
+          dispatch({ type: "saved", path, diskVersion: file.version, editVersion: entry.model.getAlternativeVersionId() });
+          markExternal(path, null);
+          log("info", `Reloaded ${path}: it changed on disk`);
+          continue;
+        }
+        markExternal(path, "changed");
+      }
+    },
+    [host, log, markExternal, models, saving]
   );
 
   const requestClose = useCallback(
@@ -299,11 +355,12 @@ export function useDocuments({ host, dialogs, log }: Deps): Documents {
           entry.holder.path = next;
           models.set(next, entry);
           monaco.editor.setModelLanguage(entry.model, languageForPath(next));
+          markExternal(path, null);
         }
       }
       dispatch({ type: "renamed", from, to });
     },
-    [models]
+    [markExternal, models]
   );
 
   const deleted = useCallback(
@@ -311,15 +368,20 @@ export function useDocuments({ host, dialogs, log }: Deps): Documents {
       for (const open of [...models.keys()]) {
         if (isSameOrInside(open, path)) {
           disposeModel(open);
+          markExternal(open, null);
         }
       }
       dispatch({ type: "deleted", path });
     },
-    [disposeModel, models]
+    [disposeModel, markExternal, models]
   );
 
   return {
     state,
+    external,
+    checkDisk,
+    dismissExternal: (path) => markExternal(path, null),
+    reloadFromDisk,
     models,
     modelFor: (path) => models.get(path)?.model ?? null,
     pathForUri: (uri) => {

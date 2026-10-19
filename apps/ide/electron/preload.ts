@@ -10,7 +10,8 @@ import {
   type MenuCommand,
   type StudioHostApi,
   type TerminalDataEvent,
-  type TerminalExitEvent
+  type TerminalExitEvent,
+  type WorkspaceChangeEvent
 } from "@studio/contracts";
 
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
@@ -37,6 +38,7 @@ const api: StudioHostApi = {
   },
   workspace: {
     openFolderDialog: () => invoke(IpcChannel.WorkspaceOpenDialog),
+    newProjectDialog: (name) => invoke(IpcChannel.WorkspaceNewProject, name),
     current: () => invoke(IpcChannel.WorkspaceCurrent),
     refreshInfo: () => invoke(IpcChannel.WorkspaceRefreshInfo),
     list: (path) => invoke(IpcChannel.WorkspaceList, path),
@@ -46,7 +48,8 @@ const api: StudioHostApi = {
     createFile: (parent, name) => invoke(IpcChannel.WorkspaceCreateFile, parent, name),
     createFolder: (parent, name) => invoke(IpcChannel.WorkspaceCreateFolder, parent, name),
     rename: (path, newName) => invoke(IpcChannel.WorkspaceRename, path, newName),
-    delete: (path, confirmed) => invoke(IpcChannel.WorkspaceDelete, path, confirmed)
+    delete: (path, confirmed) => invoke(IpcChannel.WorkspaceDelete, path, confirmed),
+    onChanged: (listener) => subscribe<WorkspaceChangeEvent>(IpcChannel.WorkspaceChanged, listener)
   },
   terminal: {
     shells: () => invoke(IpcChannel.TerminalShells),

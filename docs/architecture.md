@@ -6,7 +6,7 @@
 |---|---|---|---|
 | `@studio/contracts` | anywhere | Shared types and constants: `StudioHostApi`, IPC channel names, workspace/terminal types, `Result`/error codes, ORIGIN integration interfaces | — |
 | `@studio/core` | anywhere | Pure logic: project-name and file-name validation, project configuration checks, starter templates | — |
-| `@studio/workspace` | Node.js | Safe filesystem access for one workspace (`WorkspaceService`), project inspection, Git branch, safe npm script names | contracts, core |
+| `@studio/workspace` | Node.js | Safe filesystem access for one workspace (`WorkspaceService`), project scaffolding (`scaffoldProject`, shared by `chaos init` and New Project), change watching (`watchWorkspace`), project inspection, Git branch, safe npm script names | contracts, core |
 | `@studio/editor` | anywhere | Editor state independent of React, Monaco and Electron: open tabs, unsaved changes, disk versions, language mapping | contracts |
 | `@studio/origin-adapter` | anywhere | Offline ORIGIN adapters used today, plus test mocks | contracts |
 | `@studio/cli` (`apps/cli`) | Node.js | The `chaos` command | core, workspace |
@@ -53,6 +53,36 @@ Rules:
 | Deletes | Require `confirmed === true` (sent only after a confirmation dialog) and go to the Recycle Bin via `shell.trashItem` |
 | Terminal | The interface picks a shell id from an allowlist (`pwsh`, `powershell`, `cmd`; `bash`/`zsh`/`sh` elsewhere); no executable path or arguments come from the interface. Commands only run when the user types them or clicks **Run** on a package script (names with shell metacharacters are not offered). All shells are ended when the window closes |
 | Network | None. Monaco workers, fonts and grammars are bundled; no telemetry |
+
+## External changes
+
+`watchWorkspace` (main process, `fs.watch` recursive) batches change notifications and sends
+workspace-relative paths over `workspace:changed`. The interface reloads only the explorer
+folders that are visible and affected, refreshes project info when `package.json` or
+`.git/HEAD` changed, and compares each open tab's `diskVersion` with the file on disk:
+
+| Open tab state | Disk changed | Disk deleted |
+|---|---|---|
+| No unsaved edits | Replaced with the disk content | Notice: "deleted or moved", with Close Tab |
+| Unsaved edits | Notice: Reload from Disk / Keep My Version; Save still runs the conflict check | Notice; Save recreates the file |
+
+A save in progress is never treated as an external change.
+
+## Release packaging
+
+`apps/ide/scripts/package.mjs` stages `dist/` plus `node-pty` (the only runtime dependency
+that is not bundled) in `release/app`, then runs electron-builder for the NSIS installer and
+a portable folder. Hardening applied to the packaged executable:
+
+| Control | Setting |
+|---|---|
+| Electron fuses | `runAsNode` off, `NODE_OPTIONS` ignored, `--inspect` disabled, `onlyLoadAppFromAsar` on, `embeddedAsarIntegrityValidation` on, `cookieEncryption` on, file:// extra privileges off |
+| Native code | `node-pty` is unpacked from the asar (`asarUnpack`); only `win32-x64` prebuilds ship |
+| Installer | NSIS, per-user (`%LocalAppData%\Programs\OriginStudio`), no elevation, uninstaller registered under HKCU |
+| Signing | Only when electron-builder's `WIN_CSC_*` variables are set; never from the repository |
+
+The packaged executable is smoke-tested over the Chrome DevTools Protocol
+(`apps/ide/e2e/packaged.test.ts`), because the fuses block Playwright's normal Electron attach.
 
 ## Persistence
 

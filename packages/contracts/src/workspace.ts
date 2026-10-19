@@ -59,3 +59,11 @@ export interface SaveAsResult {
   path: RelativePath;
   version: FileVersion;
 }
+
+/** Batched notification that files changed on disk, from any program. */
+export interface WorkspaceChangeEvent {
+  /** Changed workspace-relative paths (files or folders). Empty when overflow is true. */
+  paths: RelativePath[];
+  /** Too many changes, or the platform could not say which: refresh everything. */
+  overflow: boolean;
+}

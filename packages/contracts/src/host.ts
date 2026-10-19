@@ -10,6 +10,7 @@ import type {
   FileReadResult,
   RelativePath,
   SaveAsResult,
+  WorkspaceChangeEvent,
   WorkspaceEntry,
   WorkspaceInfo,
   WriteFileOptions,
@@ -19,6 +20,7 @@ import type {
 /** Commands the application menu can send to the interface. */
 export const MENU_COMMANDS = [
   "open-folder",
+  "new-project",
   "new-file",
   "new-folder",
   "save",
@@ -59,6 +61,11 @@ export interface StudioHostApi {
   workspace: {
     /** Shows the native folder picker. Resolves to null when cancelled. */
     openFolderDialog(): Promise<Result<WorkspaceInfo | null>>;
+    /**
+     * Asks where to create a new project called `name` (native folder picker),
+     * creates it with the same rules as `chaos init`, and opens it. Null when cancelled.
+     */
+    newProjectDialog(name: string): Promise<Result<WorkspaceInfo | null>>;
     current(): Promise<Result<WorkspaceInfo | null>>;
     refreshInfo(): Promise<Result<WorkspaceInfo>>;
     list(path: RelativePath): Promise<Result<WorkspaceEntry[]>>;
@@ -71,6 +78,8 @@ export interface StudioHostApi {
     rename(path: RelativePath, newName: string): Promise<Result<WorkspaceEntry>>;
     /** Moves the entry to the system trash. confirmed must be true. */
     delete(path: RelativePath, confirmed: true): Promise<Result<void>>;
+    /** Files in the open workspace changed on disk (from any program). */
+    onChanged(listener: (event: WorkspaceChangeEvent) => void): Unsubscribe;
   };
   terminal: {
     shells(): Promise<Result<ShellInfo[]>>;

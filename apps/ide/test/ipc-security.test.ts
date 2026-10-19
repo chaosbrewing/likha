@@ -10,6 +10,7 @@ import {
   parseDelete,
   parseNoArgs,
   parsePath,
+  parseProjectName,
   parseRename,
   parseSaveAs,
   parseTerminalCreate,
@@ -43,6 +44,13 @@ test("IPC parsers accept well-formed arguments", () => {
   assert.deepEqual(parseTerminalWrite([1, "ls\r"]), { id: 1, data: "ls\r" });
   assert.deepEqual(parseTerminalResize([1, 120, 30]), { id: 1, cols: 120, rows: 30 });
   assert.equal(parseTerminalId([3]), 3);
+  assert.equal(parseProjectName(["my-app"]), "my-app");
+});
+
+test("project names are only type- and length-checked at the IPC layer; scaffoldProject validates them", () => {
+  rejects(() => parseProjectName([]), "missing name");
+  rejects(() => parseProjectName([42]), "numeric name");
+  rejects(() => parseProjectName(["x".repeat(215)]), "long name");
 });
 
 test("IPC parsers reject malformed, oversized and unexpected arguments", () => {

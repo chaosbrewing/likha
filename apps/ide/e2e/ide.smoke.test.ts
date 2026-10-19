@@ -6,7 +6,7 @@
 // Recycle Bin, because that is what the app does.
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,7 +20,12 @@ const tempRoot = mkdtempSync(path.join(os.tmpdir(), "origin-studio-e2e-"));
 const workspace = path.join(tempRoot, "smoke-project");
 const userData = path.join(tempRoot, "user-data");
 const screenshots = process.env.E2E_SCREENSHOT_DIR ?? null;
-after(() => rmSync(tempRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }));
+const launched: ElectronApplication[] = [];
+after(async () => {
+  // A failed test may leave its app running (and watching the folder); end it before cleanup.
+  for (const app of launched) await app.close().catch(() => undefined);
+  rmSync(tempRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+});
 
 mkdirSync(workspace);
 for (const file of getStarterFiles("smoke-project")) {
@@ -40,6 +45,7 @@ async function launch(args: string[]): Promise<{ app: ElectronApplication; page:
     args: [appDir, ...args],
     env: { ...env, ORIGIN_STUDIO_USER_DATA: userData } as Record<string, string>
   });
+  launched.push(app);
   const page = await app.firstWindow();
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -186,6 +192,96 @@ test("reopens the last project after a restart", { timeout: 120_000 }, async () 
   assert.match(await page.title(), /smoke-project/);
   const closed = app.waitForEvent("close");
   await closeWindow(app); // nothing unsaved: closes without asking
+  await closed;
+  assert.deepEqual(errors, []);
+});
+
+test("changes made outside the IDE are picked up", { timeout: 120_000 }, async () => {
+  writeFileSync(indexFile, "// start\n");
+  const { app, page, errors } = await launch([`--folder=${workspace}`]);
+  await page.locator('.tree-row[data-path="src"]').waitFor();
+  await page.locator('.tree-row[data-path="src"]').click();
+  await page.locator('.tree-row[data-path="src/index.ts"]').click();
+  await page.locator(".monaco-editor .view-lines").filter({ hasText: "start" }).waitFor();
+
+  // A new file created by another program appears in the explorer.
+  writeFileSync(path.join(workspace, "external.txt"), "from outside");
+  await page.locator('.tree-row[data-path="external.txt"]').waitFor();
+
+  // A clean open file follows the disk.
+  writeFileSync(indexFile, "// changed outside\n");
+  await page.locator(".monaco-editor .view-lines").filter({ hasText: "changed outside" }).waitFor();
+  assert.equal(await page.locator(".editor-notice").count(), 0);
+
+  // A file with unsaved edits is never replaced silently: the user chooses.
+  await page.locator(".monaco-editor .view-lines").click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type(" mine");
+  await page.waitForFunction(() => document.querySelector('.tab[data-path="src/index.ts"]')?.classList.contains("dirty"));
+  writeFileSync(indexFile, "// changed again\n");
+  await page.locator(".editor-notice").getByText("This file changed on disk").waitFor();
+  await shot(page, "06-external-change");
+  await page.getByRole("button", { name: "Reload from Disk" }).click();
+  await page.locator(".monaco-editor .view-lines").filter({ hasText: "changed again" }).waitFor();
+  await page.locator(".editor-notice").waitFor({ state: "detached" });
+  assert.ok(!(await page.locator('.tab[data-path="src/index.ts"]').evaluate((el) => el.classList.contains("dirty"))));
+
+  // A deleted file is reported, and the tab can be closed from the notice.
+  rmSync(indexFile);
+  await page.locator(".editor-notice").getByText("deleted or moved").waitFor();
+  await page.getByRole("button", { name: "Close Tab" }).click();
+  await page.locator('.tab[data-path="src/index.ts"]').waitFor({ state: "detached" });
+
+  const closed = app.waitForEvent("close");
+  await closeWindow(app);
+  await closed;
+  assert.deepEqual(errors, []);
+  writeFileSync(indexFile, "// restored\n");
+});
+
+test("New Project creates and opens a starter project with the chaos init rules", { timeout: 120_000 }, async () => {
+  const parent = path.join(tempRoot, "projects");
+  mkdirSync(parent);
+  mkdirSync(path.join(parent, "taken"));
+  writeFileSync(path.join(parent, "taken", "keep.txt"), "original");
+
+  const { app, page, errors } = await launch([`--folder=${workspace}`]);
+  await page.locator('.tree-row[data-path="src"]').waitFor();
+  // Stand in for the native folder picker, which cannot be driven from a test.
+  await app.evaluate(({ dialog }, folder) => {
+    dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [folder] })) as typeof dialog.showOpenDialog;
+  }, parent);
+  const newProject = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.send("menu:command", "new-project"));
+
+  // A folder that already has content is refused and left alone.
+  await newProject();
+  const input = page.getByRole("dialog").locator("input");
+  await input.fill("taken");
+  await page.keyboard.press("Enter");
+  await page.getByText("Could not create project").waitFor();
+  await page.getByRole("button", { name: "OK" }).click();
+  assert.deepEqual(readdirSync(path.join(parent, "taken")), ["keep.txt"]);
+
+  // Invalid names cannot be submitted.
+  await newProject();
+  await page.getByRole("dialog").locator("input").fill("Bad Name");
+  assert.ok(await page.getByRole("button", { name: "Choose Location…" }).isDisabled());
+  await page.getByRole("button", { name: "Choose Location…" }).evaluate((el) => (el as HTMLButtonElement).form?.requestSubmit());
+  await page.getByRole("dialog").locator("input").fill("fresh-app");
+  await page.keyboard.press("Enter");
+
+  // The project is created, opened, and its entry file is shown.
+  await page.locator('.tab[data-path="src/index.ts"]').waitFor();
+  assert.match(await page.title(), /fresh-app - Origin Studio/);
+  assert.match(await page.locator(".status-bar").innerText(), /Origin Studio project/);
+  await shot(page, "07-new-project");
+  const root = path.join(parent, "fresh-app");
+  for (const file of getStarterFiles("fresh-app")) {
+    assert.equal(readFileSync(path.join(root, ...file.path.split("/")), "utf8"), file.contents, file.path);
+  }
+
+  const closed = app.waitForEvent("close");
+  await closeWindow(app);
   await closed;
   assert.deepEqual(errors, []);
 });

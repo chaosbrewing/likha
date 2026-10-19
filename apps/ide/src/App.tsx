@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RelativePath, StudioHostApi, WorkspaceInfo } from "@studio/contracts";
-import { validateEntryName } from "@studio/core";
+import { validateEntryName, validateProjectName } from "@studio/core";
 import { activeDocument, dirtyDocuments, isDirty, isSameOrInside, languageLabel } from "@studio/editor";
 import { BottomPanel, type OutputEntry, type PanelTab, type Problem } from "./components/BottomPanel";
 import { StatusBar } from "./components/StatusBar";
@@ -124,6 +124,32 @@ export function App({ host }: { host: StudioHostApi }) {
     log("info", `Opened ${result.value.rootPath}`);
   }, [applyWorkspace, dialogs, documents, host, log]);
 
+  const newProject = useCallback(async () => {
+    if (!(await documents.resolveUnsaved("create a new project"))) return;
+    const name = await dialogs.prompt({
+      title: "New Project",
+      label: "Project name (lowercase letters, numbers, - and _). Next, choose where to create it.",
+      initialValue: "my-project",
+      confirmLabel: "Choose Location…",
+      validate: (value) => {
+        const result = validateProjectName(value);
+        return result.valid ? null : result.reason;
+      }
+    });
+    if (name === null) return;
+    const result = await host.workspace.newProjectDialog(name);
+    if (!result.ok) {
+      log("error", result.error.message);
+      await dialogs.notify("Could not create project", result.error.message);
+      return;
+    }
+    if (result.value === null) return;
+    documents.closeAll();
+    applyWorkspace(result.value);
+    log("info", `Created project ${result.value.rootPath}`);
+    await documents.openFile("src/index.ts");
+  }, [applyWorkspace, dialogs, documents, host, log]);
+
   const createEntry = useCallback(
     async (kind: "file" | "folder") => {
       if (!(await requireWorkspace())) return;
@@ -238,6 +264,8 @@ export function App({ host }: { host: StudioHostApi }) {
       switch (command) {
         case "open-folder":
           return openFolder();
+        case "new-project":
+          return newProject();
         case "new-file":
           return createEntry("file");
         case "new-folder":
@@ -291,7 +319,7 @@ export function App({ host }: { host: StudioHostApi }) {
         }
       }
     },
-    [createEntry, dialogs, documents, explorer, host, openFolder, refreshInfo, showTerminal]
+    [createEntry, dialogs, documents, explorer, host, newProject, openFolder, refreshInfo, showTerminal]
   );
 
   const commandRef = useRef(runCommand);
@@ -299,6 +327,32 @@ export function App({ host }: { host: StudioHostApi }) {
   useShortcuts((command) => void commandRef.current(command), !dialogs.isOpen);
 
   useEffect(() => host.app.onMenuCommand((command) => void commandRef.current(command)), [host]);
+
+  // Files changed on disk by any program: refresh what is visible and check open tabs.
+  const onDiskChange = useCallback(
+    (event: { paths: RelativePath[]; overflow: boolean }) => {
+      if (event.overflow) {
+        void explorer.refresh();
+        void refreshInfo();
+        void documents.checkDisk(null);
+        return;
+      }
+      const folders = new Set<RelativePath>();
+      for (const path of event.paths) {
+        folders.add(parentOf(path));
+        if (explorer.expanded.has(path)) folders.add(path);
+      }
+      for (const folder of folders) {
+        if (folder === "" || explorer.expanded.has(folder)) void explorer.reload(folder);
+      }
+      if (event.paths.some((p) => p === "package.json" || p === ".git/HEAD")) void refreshInfo();
+      void documents.checkDisk(event.paths);
+    },
+    [documents, explorer, refreshInfo]
+  );
+  const diskChangeRef = useRef(onDiskChange);
+  diskChangeRef.current = onDiskChange;
+  useEffect(() => host.workspace.onChanged((event) => diskChangeRef.current(event)), [host]);
 
   const resolveRef = useRef(documents.resolveUnsaved);
   resolveRef.current = documents.resolveUnsaved;
@@ -376,6 +430,31 @@ export function App({ host }: { host: StudioHostApi }) {
             onCursor={setCursor}
             editorRef={editorRef}
             emptyHint={emptyHint}
+            notice={
+              active && documents.external[active.path] ? (
+                <div className="editor-notice" role="alert">
+                  <span className="codicon codicon-warning" aria-hidden="true" />
+                  {documents.external[active.path] === "deleted" ? (
+                    <>
+                      <span>This file was deleted or moved outside Origin Studio. Saving will create it again.</span>
+                      <button type="button" className="button small" onClick={() => void documents.requestClose(active.path)}>
+                        Close Tab
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span>This file changed on disk. Your unsaved edits are kept until you choose.</span>
+                      <button type="button" className="button small" onClick={() => void documents.reloadFromDisk(active.path)}>
+                        Reload from Disk
+                      </button>
+                    </>
+                  )}
+                  <button type="button" className="button small" onClick={() => documents.dismissExternal(active.path)}>
+                    Keep My Version
+                  </button>
+                </div>
+              ) : null
+            }
           />
         </main>
       ) : (
@@ -383,13 +462,18 @@ export function App({ host }: { host: StudioHostApi }) {
           {started ? (
             <div className="welcome-card">
               <h1>Origin Studio</h1>
-              <p>Open a project folder to browse, edit and run it.</p>
-              <button type="button" className="button primary large" onClick={() => void runCommand("open-folder")}>
-                Open Folder…
-              </button>
+              <p>Open a project folder to browse, edit and run it, or start a new one.</p>
+              <div className="welcome-actions">
+                <button type="button" className="button primary large" onClick={() => void runCommand("open-folder")}>
+                  Open Folder…
+                </button>
+                <button type="button" className="button large" onClick={() => void runCommand("new-project")}>
+                  New Project…
+                </button>
+              </div>
               <p className="welcome-note">Everything runs on this computer. No account or internet connection is needed.</p>
               <p className="welcome-note">
-                New project? Run <code>chaos init my-project</code> in a terminal, then open the folder.
+                New Project creates the same starter as <code>chaos init</code>.
               </p>
             </div>
           ) : null}

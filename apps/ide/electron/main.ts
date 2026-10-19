@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { BrowserWindow, Menu, app, dialog, screen, session } from "electron";
 import pty from "node-pty";
 import { IpcChannel, type AppInfo, type MenuCommand, type Result } from "@studio/contracts";
-import { WorkspaceService } from "@studio/workspace";
+import { WorkspaceService, watchWorkspace, type WorkspaceWatcher } from "@studio/workspace";
 import { loadAppState, saveAppState, type AppState } from "./app-state.js";
 import { registerAppScheme, serveRenderer } from "./app-protocol.js";
 import { moveToTrash, registerIpc } from "./ipc.js";
@@ -57,6 +57,7 @@ process.on("unhandledRejection", (reason) => {
 
 let mainWindow: BrowserWindow | null = null;
 let workspace: WorkspaceService | null = null;
+let watcher: WorkspaceWatcher | null = null;
 let closeAllowed = false;
 let appState: AppState;
 const stateFile = () => path.join(app.getPath("userData"), "app-state.json");
@@ -85,6 +86,11 @@ async function openWorkspace(folder: string): Promise<Result<WorkspaceService>> 
   const opened = await WorkspaceService.open(folder, { trash: moveToTrash });
   if (opened.ok) {
     workspace = opened.value;
+    watcher?.close();
+    const root = workspace.root;
+    watcher = watchWorkspace(root, (event) => send(IpcChannel.WorkspaceChanged, event), {
+      onError: (error) => log(`Stopped watching ${root}: ${error.message}`)
+    });
     appState.lastWorkspace = workspace.root;
     persistState();
     mainWindow?.setTitle(`${path.basename(workspace.root)} - Origin Studio`);
@@ -195,7 +201,10 @@ if (!app.requestSingleInstanceLock()) {
     contents.setWindowOpenHandler(() => ({ action: "deny" }));
   });
 
-  app.on("before-quit", () => terminals.killAll());
+  app.on("before-quit", () => {
+    terminals.killAll();
+    watcher?.close();
+  });
   app.on("window-all-closed", () => app.quit());
 
   void app.whenReady().then(async () => {

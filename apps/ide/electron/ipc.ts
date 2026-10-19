@@ -8,7 +8,7 @@ import {
   type Result,
   type WorkspaceInfo
 } from "@studio/contracts";
-import { WorkspaceService } from "@studio/workspace";
+import { WorkspaceService, scaffoldProject } from "@studio/workspace";
 import {
   ArgumentError,
   parseConfirmClose,
@@ -16,6 +16,7 @@ import {
   parseDelete,
   parseNoArgs,
   parsePath,
+  parseProjectName,
   parseRename,
   parseSaveAs,
   parseTerminalCreate,
@@ -112,6 +113,29 @@ export function registerIpc(context: IpcContext): void {
       return ok(null);
     }
     const opened = await context.openWorkspace(folder);
+    return opened.ok ? ok(opened.value.info()) : opened;
+  });
+
+  handle(IpcChannel.WorkspaceNewProject, parseProjectName, async (name): Promise<Result<WorkspaceInfo | null>> => {
+    const win = context.window();
+    if (!win) {
+      return fail("UNKNOWN", "No window is open.");
+    }
+    const picked = await dialog.showOpenDialog(win, {
+      title: `Choose where to create "${name}"`,
+      buttonLabel: "Create Project Here",
+      properties: ["openDirectory", "createDirectory"]
+    });
+    const parent = picked.filePaths[0];
+    if (picked.canceled || !parent) {
+      return ok(null);
+    }
+    const created = scaffoldProject(parent, name);
+    if (!created.ok) {
+      return created;
+    }
+    context.log(`Created project ${created.value.root}`);
+    const opened = await context.openWorkspace(created.value.root);
     return opened.ok ? ok(opened.value.info()) : opened;
   });
 

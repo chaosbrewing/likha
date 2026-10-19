@@ -17,6 +17,7 @@ export function buildMenu(send: (command: MenuCommand) => void, options: { dev: 
     {
       label: "&File",
       submenu: [
+        item("New Project…", "new-project"),
         item("Open Folder…", "open-folder", "CmdOrCtrl+O"),
         { type: "separator" },
         item("New File…", "new-file", "CmdOrCtrl+N"),

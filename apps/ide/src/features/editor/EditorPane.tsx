@@ -12,6 +12,8 @@ interface EditorPaneProps {
   onCursor(position: { line: number; column: number } | null): void;
   editorRef: { current: monaco.editor.IStandaloneCodeEditor | null };
   emptyHint: React.ReactNode;
+  /** Shown above the editor when the active file changed or vanished on disk. */
+  notice: React.ReactNode;
 }
 
 export function EditorPane(props: EditorPaneProps) {
@@ -124,6 +126,7 @@ export function EditorPane(props: EditorPaneProps) {
           })}
         </div>
       ) : null}
+      {props.notice}
       <div className="editor-host">
         <div ref={containerRef} className="monaco-container" style={{ visibility: model ? "visible" : "hidden" }} />
         {model ? null : <div className="editor-empty">{props.emptyHint}</div>}

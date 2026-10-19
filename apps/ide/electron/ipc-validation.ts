@@ -67,6 +67,11 @@ export function parseConfirmClose(args: unknown[]): boolean {
   return args[0];
 }
 
+export function parseProjectName(args: unknown[]): string {
+  expectCount(args, 1);
+  return string(args[0], "name", 214);
+}
+
 export function parsePath(args: unknown[]): string {
   expectCount(args, 1);
   return string(args[0], "path", MAX_PATH_LENGTH);

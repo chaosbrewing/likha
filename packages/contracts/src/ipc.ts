@@ -6,6 +6,8 @@ export const IpcChannel = {
   MenuCommand: "menu:command",
 
   WorkspaceOpenDialog: "workspace:open-dialog",
+  WorkspaceNewProject: "workspace:new-project",
+  WorkspaceChanged: "workspace:changed",
   WorkspaceCurrent: "workspace:current",
   WorkspaceRefreshInfo: "workspace:refresh-info",
   WorkspaceList: "workspace:list",

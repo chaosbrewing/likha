@@ -15,8 +15,10 @@
     "ide:dev": "npm run dev -w @studio/ide --",
     "typecheck": "tsc --noEmit && tsc --noEmit -p apps/ide/tsconfig.json",
     "test": "npm run build && node --import tsx --test --test-force-exit \"packages/*/test/**/*.test.ts\" \"apps/cli/test/**/*.test.ts\" \"apps/ide/test/**/*.test.ts\"",
-    "test:e2e": "node --import tsx --test --test-force-exit \"apps/ide/e2e/**/*.test.ts\"",
-    "postinstall": "install-electron"
+    "test:e2e": "node --import tsx --test --test-force-exit \"apps/ide/e2e/ide.smoke.test.ts\"",
+    "postinstall": "install-electron",
+    "package": "npm run package -w @studio/ide",
+    "test:package": "node --import tsx --test --test-force-exit \"apps/ide/e2e/packaged.test.ts\""
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
@@ -27,6 +29,5 @@
     "monaco-editor": {
       "dompurify": "3.4.17"
     }
-  },
-  "packageManager": "pnpm@12.14.0+sha512.c18ba6d87993d3d164cb5e8948f32b2c06ee854487e06cd8d86781342fb3e5bb4634367034711e86802baa9c37bea906ce1929ad08d70884c97d801df13389a6"
+  }
 }
