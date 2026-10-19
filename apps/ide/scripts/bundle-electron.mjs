@@ -1,4 +1,5 @@
 // Bundles the Electron main process (ESM) and the sandboxed preload (CommonJS).
+import { copyFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -29,4 +30,7 @@ export async function bundleElectron({ dev = false } = {}) {
     format: "cjs",
     external: ["electron"]
   });
+  // Window icon for unpackaged runs (the packaged executable carries its own).
+  mkdirSync(path.join(appDir, "dist", "electron"), { recursive: true });
+  copyFileSync(path.join(appDir, "build", "icon.png"), path.join(appDir, "dist", "electron", "icon.png"));
 }

@@ -121,6 +121,7 @@ function createWindow(): BrowserWindow {
     minHeight: 400,
     show: false,
     title: "Origin Studio",
+    icon: path.join(here, "icon.png"),
     backgroundColor: "#1b1d23",
     webPreferences: {
       preload: path.join(here, "preload.cjs"),

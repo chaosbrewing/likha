@@ -10,7 +10,7 @@
     "start": "electron .",
     "dev": "node scripts/dev.mjs",
     "package": "node scripts/package.mjs",
-    "icon": "node scripts/make-icon.mjs"
+    "icon": "electron scripts/make-icon.mjs"
   },
   "dependencies": {
     "@studio/contracts": "0.1.0",

@@ -70,6 +70,14 @@ PowerShell 5.1 terminal, use `chaos.cmd` if the execution policy blocks `chaos` 
 terminal prints this hint). PowerShell 7 terminals are not affected. Origin Studio never
 changes the execution policy.
 
+### App icon
+
+The logo source is `apps/ide/build/logo.webp`. `npm run icon -w @studio/ide` regenerates
+`build/icon.png`, `build/icon.ico` (16–256 px, for the executable and installer) and
+`src/assets/logo.png` (shown in the title bar and welcome screen) from it. The outputs are
+committed, so a normal build needs no image tooling. Replace `logo.webp` and re-run the
+script to change the icon.
+
 ### Code signing
 
 `npm run package` signs the installer and executables only when a certificate is configured

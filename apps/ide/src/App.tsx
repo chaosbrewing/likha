@@ -12,6 +12,7 @@ import { Explorer, IconButton } from "./features/explorer/Explorer";
 import { useExplorer } from "./features/explorer/useExplorer";
 import { TerminalPanel, type TerminalPanelApi } from "./features/terminal/TerminalPanel";
 import { useShortcuts, type ShortcutCommand } from "./hooks/useShortcuts";
+import logo from "./assets/logo.png";
 
 let outputId = 0;
 
@@ -399,7 +400,10 @@ export function App({ host }: { host: StudioHostApi }) {
   return (
     <div className="app" style={{ gridTemplateRows: `40px 1fr ${panelVisible ? `${panelHeight}px` : "0px"} 24px` }}>
       <header className="title-bar">
-        <span className="brand">ORIGIN STUDIO</span>
+        <span className="brand">
+          <img src={logo} alt="" className="brand-logo" />
+          ORIGIN STUDIO
+        </span>
         <span className="title-workspace">{workspace ? workspace.name : ""}</span>
         <div className="toolbar">
           <IconButton icon="codicon-folder-opened" label="Open Folder (Ctrl+O)" onClick={() => void runCommand("open-folder")} />
@@ -461,6 +465,7 @@ export function App({ host }: { host: StudioHostApi }) {
         <main className="welcome">
           {started ? (
             <div className="welcome-card">
+              <img src={logo} alt="" className="welcome-logo" />
               <h1>Origin Studio</h1>
               <p>Open a project folder to browse, edit and run it, or start a new one.</p>
               <div className="welcome-actions">
