@@ -11,7 +11,7 @@ import { moveToTrash, registerIpc } from "./ipc.js";
 import { buildMenu } from "./menu.js";
 import { APP_ORIGIN, developmentCsp, parseDevServerUrl } from "./security.js";
 import { detectShells } from "./shells.js";
-import { TerminalManager, type SpawnPty } from "./terminal-manager.js";
+import { TerminalManager, killProcessTree, type SpawnPty } from "./terminal-manager.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const devServerUrl = parseDevServerUrl(process.env.ORIGIN_STUDIO_DEV_SERVER_URL);
@@ -76,11 +76,19 @@ function send(channel: string, payload?: unknown): void {
   }
 }
 
-const spawnPty: SpawnPty = (file, args, options) => pty.spawn(file, args, options);
-const terminals = new TerminalManager(spawnPty, {
-  data: (id, data) => send(IpcChannel.TerminalData, { id, data }),
-  exit: (id, exitCode) => send(IpcChannel.TerminalExit, { id, exitCode })
-});
+// useConptyDll: node-pty's bundled ConPTY. Its kill path needs no child_process.fork(),
+// which the packaged app's runAsNode fuse forbids.
+const spawnPty: SpawnPty = (file, args, options) =>
+  pty.spawn(file, args, { ...options, ...(process.platform === "win32" ? { useConptyDll: true } : {}) });
+const terminals = new TerminalManager(
+  spawnPty,
+  {
+    data: (id, data) => send(IpcChannel.TerminalData, { id, data }),
+    exit: (id, exitCode) => send(IpcChannel.TerminalExit, { id, exitCode })
+  },
+  process.env,
+  killProcessTree
+);
 
 async function openWorkspace(folder: string): Promise<Result<WorkspaceService>> {
   const opened = await WorkspaceService.open(folder, { trash: moveToTrash });

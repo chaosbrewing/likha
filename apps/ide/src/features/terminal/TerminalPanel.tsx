@@ -38,14 +38,14 @@ export function TerminalPanel({ host, visible, scripts, apiRef, log }: TerminalP
   const hostRef = useRef<HTMLDivElement>(null);
   const sessions = useRef(new Map<number, Session>());
   const pending = useRef(new Map<number, string[]>());
-  const [tabs, setTabs] = useState<{ id: number; label: string; exited: boolean }[]>([]);
+  const [tabs, setTabs] = useState<{ id: number; label: string; exited: boolean; policyHint: boolean }[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [shells, setShells] = useState<ShellInfo[]>([]);
   const [script, setScript] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const syncTabs = useCallback(() => {
-    setTabs([...sessions.current.values()].map((s) => ({ id: s.id, label: s.shell.label, exited: s.exited })));
+    setTabs([...sessions.current.values()].map((s) => ({ id: s.id, label: s.shell.label, exited: s.exited, policyHint: s.shell.restrictedScriptPolicyLikely })));
   }, []);
 
   useEffect(() => {
@@ -139,11 +139,9 @@ export function TerminalPanel({ host, visible, scripts, apiRef, log }: TerminalP
       const session: Session = { id: info.id, shell: info.shell, term, fit, element, exited: false };
       sessions.current.set(info.id, session);
 
-      if (info.shell.restrictedScriptPolicyLikely) {
-        term.write(
-          "\x1b[90mWindows PowerShell 5.1: if `chaos` or `npm` is blocked by the execution policy, run `chaos.cmd` / `npm.cmd`, or open a PowerShell 7 terminal.\x1b[0m\r\n"
-        );
-      }
+      // Nothing is written into the terminal by the interface itself: text the shell
+      // did not produce confuses the pseudoconsole's cursor tracking. Hints are shown
+      // as a panel message instead (see below).
       for (const chunk of pending.current.get(info.id) ?? []) term.write(chunk);
       pending.current.delete(info.id);
 
@@ -256,6 +254,12 @@ export function TerminalPanel({ host, visible, scripts, apiRef, log }: TerminalP
       {tabs.length === 0 && !error ? (
         <p className="panel-message">
           No terminal is running. Start one with a button above or Ctrl+Shift+`. Terminals open in the project folder.
+        </p>
+      ) : null}
+      {tabs.find((tab) => tab.id === activeId)?.policyHint ? (
+        <p className="panel-message">
+          Windows PowerShell 5.1: if <code>chaos</code> or <code>npm</code> is blocked by the execution policy, use <code>chaos.cmd</code> / <code>npm.cmd</code>, or
+          open a PowerShell 7 terminal.
         </p>
       ) : null}
       <div ref={hostRef} className="terminal-host" />

@@ -4,7 +4,22 @@ import os from "node:os";
 import pty from "node-pty";
 import { TERMINAL_LIMITS } from "@studio/contracts";
 import { detectShells, type ResolvedShell } from "../electron/shells.ts";
-import { TerminalManager, type PtyProcess, type SpawnPty } from "../electron/terminal-manager.ts";
+import { execFileSync } from "node:child_process";
+import { TerminalManager, killProcessTree, type PtyProcess, type SpawnPty } from "../electron/terminal-manager.ts";
+
+/** Spawns exactly as the app does on Windows (bundled ConPTY, no fork on kill). */
+const spawnReal: SpawnPty = (file, args, options) =>
+  pty.spawn(file, args, { ...options, ...(process.platform === "win32" ? { useConptyDll: true } : {}) });
+
+function processExists(pid: number): boolean {
+  const out = execFileSync("tasklist", ["/FI", `PID eq ${pid}`, "/NH"], { encoding: "utf8" });
+  return out.includes(String(pid));
+}
+
+function childPids(parentPid: number): number[] {
+  const out = execFileSync("powershell.exe", ["-NoProfile", "-Command", `(Get-CimInstance Win32_Process -Filter "ParentProcessId=${parentPid}").ProcessId`], { encoding: "utf8" });
+  return out.split(/\s+/).filter(Boolean).map(Number);
+}
 
 class FakePty implements PtyProcess {
   pid = 1234;
@@ -137,7 +152,7 @@ test("a real shell runs a command through node-pty and exits cleanly", { skip: p
   let output = "";
   let exitCode: number | null = null;
   const exited = new Promise<void>((resolve) => {
-    const manager = new TerminalManager((file, args, options) => pty.spawn(file, args, options), {
+    const manager = new TerminalManager(spawnReal, {
       data: (_id, data) => {
         output += data;
       },
@@ -160,4 +175,48 @@ test("a real shell runs a command through node-pty and exits cleanly", { skip: p
   await exited;
   assert.match(output, /origin-terminal-\d+-ok/, "the command was executed, not just echoed");
   assert.equal(exitCode, 3);
+});
+
+test("killing a session ends the shell and the processes it started, without unhandled rejections", { skip: process.platform !== "win32" && "Windows-specific", timeout: 60_000 }, async () => {
+  const rejections: unknown[] = [];
+  const onRejection = (reason: unknown) => rejections.push(reason);
+  process.on("unhandledRejection", onRejection);
+  try {
+    const shell = detectShells().find((s) => s.id === "cmd");
+    assert.ok(shell, "cmd.exe is available");
+    let shellPid = 0;
+    const manager = new TerminalManager(
+      (file, args, options) => {
+        const proc = spawnReal(file, args, options);
+        shellPid = proc.pid;
+        return proc;
+      },
+      { data() {}, exit() {} },
+      process.env,
+      killProcessTree
+    );
+    const created = manager.create(shell, os.tmpdir(), 80, 24);
+    assert.ok(created.ok);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    // A long-running child, like a dev server, started from the terminal.
+    manager.write(created.value.id, 'node -e "setInterval(() => {}, 1000)"\r');
+    let children: number[] = [];
+    for (let i = 0; i < 40 && children.length === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      children = childPids(shellPid);
+    }
+    assert.ok(children.length > 0, "the child process started");
+
+    assert.ok(manager.kill(created.value.id).ok);
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline && (processExists(shellPid) || children.some(processExists))) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    assert.equal(processExists(shellPid), false, "shell ended");
+    assert.deepEqual(children.filter(processExists), [], "child processes ended");
+    assert.deepEqual(rejections, [], "no unhandled rejections from node-pty");
+  } finally {
+    process.off("unhandledRejection", onRejection);
+  }
 });

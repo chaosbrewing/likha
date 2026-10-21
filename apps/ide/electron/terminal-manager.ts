@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import {
   TERMINAL_LIMITS,
   fail,
@@ -34,6 +35,23 @@ interface Session {
 }
 
 /**
+ * Ends a shell and everything it started (a dev server, a watcher), so closing
+ * a terminal or the app never leaves processes behind. Best effort: the
+ * pseudoconsole is closed right after this regardless.
+ */
+export function killProcessTree(pid: number): void {
+  if (process.platform === "win32") {
+    execFile("taskkill", ["/PID", String(pid), "/T", "/F"], () => undefined);
+    return;
+  }
+  try {
+    process.kill(pid, "SIGHUP");
+  } catch {
+    // Already gone.
+  }
+}
+
+/**
  * Owns every shell process started by the integrated terminal. Lives in the
  * trusted main process; the interface can only start allowlisted shells and
  * send keystrokes to sessions it created.
@@ -45,7 +63,8 @@ export class TerminalManager {
   constructor(
     private readonly spawn: SpawnPty,
     private readonly events: TerminalEvents,
-    private readonly env: NodeJS.ProcessEnv = process.env
+    private readonly env: NodeJS.ProcessEnv = process.env,
+    private readonly killTree: (pid: number) => void = () => undefined
   ) {}
 
   get count(): number {
@@ -136,6 +155,7 @@ export class TerminalManager {
 
   private terminate(session: Session): void {
     this.sessions.delete(session.info.id);
+    this.killTree(session.pty.pid);
     try {
       session.pty.kill();
     } catch {

@@ -172,6 +172,13 @@ test("primary development journey", { timeout: 240_000 }, async () => {
   await page.getByRole("button", { name: "Cancel" }).click();
   assert.equal(await page.locator(".app").count(), 1);
 
+  // A close started inside the page (window.close()) gets the same protection.
+  await page.evaluate(() => window.close());
+  await page.getByText("1 file has unsaved changes").waitFor();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await page.waitForTimeout(500);
+  assert.equal(await page.locator(".app").count(), 1, "window.close() did not discard unsaved work");
+
   await closeWindow(app);
   await page.getByText("1 file has unsaved changes").waitFor();
   const closed = app.waitForEvent("close");

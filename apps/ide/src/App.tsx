@@ -357,14 +357,34 @@ export function App({ host }: { host: StudioHostApi }) {
 
   const resolveRef = useRef(documents.resolveUnsaved);
   resolveRef.current = documents.resolveUnsaved;
-  useEffect(
-    () =>
-      host.app.onCloseRequested(async () => {
-        const allow = await resolveRef.current("close Origin Studio");
-        await host.app.confirmClose(allow);
-      }),
-    [host]
-  );
+  const dirtyRef = useRef(dirtyPaths);
+  dirtyRef.current = dirtyPaths;
+  // Set once the user has decided (saved or discarded) so the window may unload.
+  const unloadAllowed = useRef(false);
+  const closing = useRef(false);
+  const decideClose = useCallback(async () => {
+    if (closing.current) return;
+    closing.current = true;
+    try {
+      const allow = await resolveRef.current("close Origin Studio");
+      unloadAllowed.current = allow;
+      await host.app.confirmClose(allow);
+    } finally {
+      closing.current = false;
+    }
+  }, [host]);
+  useEffect(() => host.app.onCloseRequested(() => void decideClose()), [host, decideClose]);
+  // Defence in depth: a close that starts in the page (window.close(), a reload)
+  // must go through the same decision instead of discarding unsaved work.
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (unloadAllowed.current || dirtyRef.current.size === 0) return;
+      event.preventDefault();
+      void decideClose();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [decideClose]);
 
   const openProblem = useCallback(
     async (problem: Problem) => {
