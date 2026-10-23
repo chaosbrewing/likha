@@ -24,6 +24,8 @@ interface BottomPanelProps {
   terminal: ReactNode;
   output: OutputEntry[];
   problems: Problem[];
+  /** Null until the language server has checked the project; then how much it covered. */
+  problemsScope: { filesChecked: number; truncated: boolean } | null;
   onOpenProblem(problem: Problem): void;
   height: number;
   onResize(height: number): void;
@@ -81,7 +83,12 @@ export function BottomPanel(props: BottomPanelProps) {
         ) : null}
         {props.tab === "problems" ? (
           <ul className="problem-list">
-            {props.problems.length === 0 ? <li className="panel-message">No problems detected in open files.</li> : null}
+            {props.problems.length === 0 ? (
+              <li className="panel-message">
+                {props.problemsScope ? `No problems detected in the project (${props.problemsScope.filesChecked} source file${props.problemsScope.filesChecked === 1 ? "" : "s"} checked).` : "No problems detected in open files."}
+              </li>
+            ) : null}
+            {props.problemsScope?.truncated ? <li className="panel-message">The project has more source files than Origin Studio checks; only the first files are included.</li> : null}
             {props.problems.map((problem, index) => (
               <li key={index}>
                 <button type="button" onClick={() => props.onOpenProblem(problem)}>

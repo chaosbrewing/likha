@@ -6,7 +6,7 @@ import type { MenuCommand } from "@studio/contracts";
  * shown in the menu but not registered natively (registerAccelerator: false),
  * so they behave the same whether triggered from the keyboard or a test.
  */
-export function buildMenu(send: (command: MenuCommand) => void, options: { dev: boolean; quit: () => void }): Menu {
+export function buildMenu(send: (command: MenuCommand) => void, options: { dev: boolean; quit: () => void; checkForUpdates: () => void }): Menu {
   const item = (label: string, command: MenuCommand, accelerator?: string): MenuItemConstructorOptions => ({
     label,
     click: () => send(command),
@@ -65,7 +65,7 @@ export function buildMenu(send: (command: MenuCommand) => void, options: { dev: 
     },
     {
       label: "&Help",
-      submenu: [item("About Origin Studio", "about")]
+      submenu: [{ label: "Check for Updates…", click: options.checkForUpdates }, { type: "separator" }, item("About Origin Studio", "about")]
     }
   ];
   return Menu.buildFromTemplate(template);

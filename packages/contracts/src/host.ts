@@ -1,3 +1,17 @@
+import type {
+  CompletionContext,
+  CompletionEntry,
+  CompletionResult,
+  Diagnostic,
+  FileLocation,
+  HoverInfo,
+  LanguageId,
+  LanguageServerStatus,
+  ProjectProblemsEvent,
+  SignatureHelpInfo,
+  TextChange,
+  TextPosition
+} from "./language.js";
 import type { Result } from "./result.js";
 import type {
   ShellInfo,
@@ -89,5 +103,27 @@ export interface StudioHostApi {
     kill(id: number): Promise<Result<void>>;
     onData(listener: (event: TerminalDataEvent) => void): Unsubscribe;
     onExit(listener: (event: TerminalExitEvent) => void): Unsubscribe;
+  };
+  /**
+   * Project-wide TypeScript/JavaScript intelligence from a language server the
+   * host runs for the open workspace. Every call degrades to an empty answer
+   * (null, []) when the server is not available; editing never depends on it.
+   */
+  language: {
+    status(): Promise<Result<LanguageServerStatus>>;
+    /** Tells the server the interface holds this document; its text now comes from the interface, not the disk. */
+    open(path: RelativePath, languageId: LanguageId, version: number, text: string): Promise<Result<void>>;
+    change(path: RelativePath, version: number, changes: TextChange[]): Promise<Result<void>>;
+    close(path: RelativePath): Promise<Result<void>>;
+    hover(path: RelativePath, position: TextPosition): Promise<Result<HoverInfo | null>>;
+    completion(path: RelativePath, position: TextPosition, context: CompletionContext): Promise<Result<CompletionResult | null>>;
+    resolveCompletion(token: number, index: number): Promise<Result<CompletionEntry | null>>;
+    definition(path: RelativePath, position: TextPosition): Promise<Result<FileLocation[]>>;
+    references(path: RelativePath, position: TextPosition): Promise<Result<FileLocation[]>>;
+    signatureHelp(path: RelativePath, position: TextPosition): Promise<Result<SignatureHelpInfo | null>>;
+    /** Current diagnostics for one document the interface has open. */
+    diagnostics(path: RelativePath): Promise<Result<Diagnostic[]>>;
+    onStatus(listener: (status: LanguageServerStatus) => void): Unsubscribe;
+    onProblems(listener: (event: ProjectProblemsEvent) => void): Unsubscribe;
   };
 }

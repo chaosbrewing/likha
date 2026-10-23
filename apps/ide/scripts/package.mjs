@@ -6,6 +6,9 @@
 //
 // Usage: npm run build, then npm run package (from the repo root).
 // Signing happens only when CSC_LINK / WIN_CSC_LINK point at a certificate.
+// Updates: set ORIGIN_STUDIO_UPDATE_URL (https) to bake an update feed into the
+// build; "Check for Updates…" then reads <url>/latest.yml, which this script
+// writes next to the installer. Without it the build has no update feed.
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -44,6 +47,15 @@ for (const dependency of ["node-pty", "node-addon-api"]) {
   });
 }
 const nodePty = JSON.parse(readFileSync(require.resolve("node-pty/package.json"), "utf8"));
+// The native TypeScript compiler doubles as the project-wide language server (tsc --lsp).
+// It ships outside the asar, next to its lib.*.d.ts files, as resources/typescript.
+const typescriptDir = path.dirname(require.resolve("@typescript/typescript-win32-x64/package.json"));
+const updateUrl = process.env.ORIGIN_STUDIO_UPDATE_URL?.trim() || null;
+if (updateUrl !== null && !/^https:\/\/\S+$/.test(updateUrl)) {
+  throw new Error("ORIGIN_STUDIO_UPDATE_URL must be an https:// URL (the update feed is fetched over the network).");
+}
+// Only a signed build can insist that updates are signed by the same publisher.
+const publisherName = process.env.ORIGIN_STUDIO_PUBLISHER_NAME?.trim() || null;
 writeFileSync(
   path.join(stageDir, "package.json"),
   `${JSON.stringify(
@@ -74,6 +86,11 @@ const artifacts = await build({
     electronVersion,
     directories: { output: path.join(releaseDir, "dist"), buildResources: path.join(appDir, "build") },
     files: ["dist/**", "package.json", "node_modules/**"],
+    extraResources: [
+      // lib*.d.ts also matches lib.d.ts, which the server insists on finding next to itself.
+      { from: path.join(typescriptDir, "lib"), to: "typescript", filter: ["tsc.exe", "lib*.d.ts"] },
+      { from: typescriptDir, to: "typescript", filter: ["package.json", "LICENSE", "NOTICE.txt"] }
+    ],
     asar: true,
     // Native binaries and the ConPTY helpers must be real files on disk.
     asarUnpack: ["node_modules/node-pty/**"],
@@ -90,7 +107,14 @@ const artifacts = await build({
       grantFileProtocolExtraPrivileges: false
     },
     nodeGypRebuild: false,
-    win: { icon: path.join(appDir, "build", "icon.ico"), executableName: "OriginStudio" },
+    win: {
+      icon: path.join(appDir, "build", "icon.ico"),
+      executableName: "OriginStudio",
+      ...(publisherName ? { publisherName: [publisherName] } : {})
+    },
+    // With a feed, electron-builder writes resources/app-update.yml (read by electron-updater)
+    // and release/dist/latest.yml (to upload next to the installer). Nothing is uploaded here.
+    ...(updateUrl ? { publish: [{ provider: "generic", url: updateUrl, channel: "latest" }] } : {}),
     nsis: {
       oneClick: false,
       perMachine: false,

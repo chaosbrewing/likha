@@ -21,9 +21,23 @@ const workspace = path.join(tempRoot, "smoke-project");
 const userData = path.join(tempRoot, "user-data");
 const screenshots = process.env.E2E_SCREENSHOT_DIR ?? null;
 const launched: ElectronApplication[] = [];
+
+/**
+ * Ends an app a failed test left behind. app.close() asks the app to quit, which the
+ * unsaved-changes guard can refuse forever, so the process is killed after a short grace.
+ */
+async function forceClose(app: ElectronApplication): Promise<void> {
+  await Promise.race([app.close().catch(() => undefined), new Promise((resolve) => setTimeout(resolve, 3000))]);
+  try {
+    app.process().kill();
+  } catch {
+    // Already gone.
+  }
+}
+
 after(async () => {
   // A failed test may leave its app running (and watching the folder); end it before cleanup.
-  for (const app of launched) await app.close().catch(() => undefined);
+  for (const app of launched) await forceClose(app);
   rmSync(tempRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 });
 
@@ -38,12 +52,12 @@ writeFileSync(path.join(tempRoot, "outside.txt"), "secret");
 
 const indexFile = path.join(workspace, "src", "index.ts");
 
-async function launch(args: string[]): Promise<{ app: ElectronApplication; page: Page; errors: string[] }> {
+async function launch(args: string[], extraEnv: Record<string, string> = {}): Promise<{ app: ElectronApplication; page: Page; errors: string[] }> {
   // The test runner's own variables (test context, tsx loader) must not leak into Electron's Node.
   const { NODE_TEST_CONTEXT: _context, NODE_OPTIONS: _options, ...env } = process.env;
   const app = await electron.launch({
     args: [appDir, ...args],
-    env: { ...env, ORIGIN_STUDIO_USER_DATA: userData } as Record<string, string>
+    env: { ...env, ORIGIN_STUDIO_USER_DATA: userData, ...extraEnv } as Record<string, string>
   });
   launched.push(app);
   const page = await app.firstWindow();
@@ -291,4 +305,126 @@ test("New Project creates and opens a starter project with the chaos init rules"
   await closeWindow(app);
   await closed;
   assert.deepEqual(errors, []);
+});
+
+test("project-wide TypeScript intelligence: problems in unopened files, live diagnostics and cross-file navigation", { timeout: 120_000 }, async () => {
+  writeFileSync(indexFile, 'export function greet(name: string): string {\n  return `Hello from ${name}!`;\n}\n');
+  const brokenFile = path.join(workspace, "src", "broken.ts");
+  writeFileSync(brokenFile, 'import { greet } from "./index.js";\nconst n: number = greet("x");\nconsole.log(n);\n');
+  const { app, page, errors } = await launch([`--folder=${workspace}`]);
+  try {
+    await page.locator('.tree-row[data-path="src"]').waitFor();
+
+    // The language server starts with the workspace and says so in the status bar.
+    await page.locator('.status-bar [data-language-server="ready"]').waitFor({ timeout: 30_000 });
+    assert.match(await page.locator('.status-bar [data-language-server="ready"]').innerText(), /TypeScript \d/);
+
+    // The Problems view covers the whole project: broken.ts was never opened.
+    await page.getByRole("tab", { name: /Problems/ }).click();
+    const brokenProblem = page.locator(".problem-list button").filter({ hasText: "src/broken.ts" });
+    await brokenProblem.first().waitFor({ timeout: 30_000 });
+    assert.match(await brokenProblem.first().innerText(), /Type 'string' is not assignable to type 'number'/);
+    await shot(page, "08-project-problems");
+
+    // Clicking a problem opens the file at that line; the open file now gets live diagnostics from the server.
+    await brokenProblem.first().click();
+    await page.locator('.tab[data-path="src/broken.ts"]').waitFor();
+    await page.locator(".monaco-editor .view-lines").filter({ hasText: "greet" }).waitFor();
+    await page.locator(".monaco-editor .squiggly-error").first().waitFor({ timeout: 30_000 });
+    assert.match(await page.locator(".status-bar").innerText(), /Ln 2/);
+
+    // A bad import in an open file is reported (the open-files-only worker had to hide these).
+    await page.locator(".monaco-editor .view-lines").click();
+    await page.keyboard.press("Control+End");
+    await page.keyboard.type('\nimport { nope } from "./missing.js";');
+    await page.locator(".problem-list button").filter({ hasText: "Cannot find module './missing.js'" }).waitFor({ timeout: 30_000 });
+
+    // Hover and completion come from the server too (details resolved on demand).
+    await page.keyboard.press("Control+Home");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Home");
+    for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowRight");
+    const greetWord = page.locator(".monaco-editor .view-line").filter({ hasText: "const n: number" }).locator("span").filter({ hasText: /^\s*greet$/ }).first();
+    await greetWord.hover();
+    await page.locator(".monaco-editor .monaco-hover").filter({ hasText: "function greet(name: string): string" }).waitFor({ timeout: 30_000 });
+    await shot(page, "09-hover");
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Control+End");
+    await page.keyboard.type("\ngre");
+    await page.locator(".monaco-editor .suggest-widget .monaco-list-row").filter({ hasText: /^greet/ }).first().waitFor({ timeout: 30_000 });
+    await shot(page, "10-completion");
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Control+Z");
+
+    // Go to Definition crosses files: greet lives in index.ts, which is not open yet.
+    await page.keyboard.press("Control+Home");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Home");
+    for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowRight"); // inside "greet" on line 2
+    await page.waitForFunction(() => /Ln 2, Col 21/.test(document.querySelector(".status-bar")?.textContent ?? ""));
+    await page.keyboard.press("F12");
+    await page.locator('.tab[data-path="src/index.ts"].active').waitFor({ timeout: 30_000 });
+    await page.waitForFunction(() => /Ln 1, Col 17/.test(document.querySelector(".status-bar")?.textContent ?? ""), undefined, { timeout: 10_000 });
+    await shot(page, "11-go-to-definition");
+
+    const closed = app.waitForEvent("close");
+    await closeWindow(app);
+    await page.getByText("1 file has unsaved changes").waitFor();
+    await page.getByRole("button", { name: "Don't Save" }).click();
+    await closed;
+    assert.deepEqual(errors, []);
+  } finally {
+    await forceClose(app);
+    rmSync(brokenFile, { force: true });
+  }
+});
+
+test("the ORIGIN Core feature flag links a folder through .origin/project.json, read-only", { timeout: 120_000 }, async () => {
+  const linkDir = path.join(workspace, ".origin");
+  const linkFile = path.join(linkDir, "project.json");
+  rmSync(linkDir, { recursive: true, force: true });
+  const { app, page, errors } = await launch([`--folder=${workspace}`], { ORIGIN_STUDIO_FEATURES: "origin-core" });
+  try {
+    await page.locator('.tree-row[data-path="src"]').waitFor();
+    await page.locator('.status-bar [data-origin="none"]').waitFor();
+    assert.match(await page.locator('.status-bar [data-origin="none"]').innerText(), /ORIGIN: not linked/);
+
+    // A link file written by another program (ORIGIN, a developer) is picked up without a restart.
+    mkdirSync(linkDir);
+    writeFileSync(linkFile, JSON.stringify({ projectId: "proj_smoke", name: "Smoke Site", ownerId: "user_1", permissions: ["read"], revision: 3 }));
+    await page.locator('.status-bar [data-origin="linked"]').waitFor({ timeout: 30_000 });
+    assert.match(await page.locator('.status-bar [data-origin="linked"]').innerText(), /ORIGIN: Smoke Site/);
+    assert.match(await page.locator('.status-bar [data-origin="linked"]').getAttribute("title").then(String), /proj_smoke.*revision 3.*Read-only/s);
+    await shot(page, "12-origin-linked");
+
+    // An invalid link is reported, never guessed, and nothing is written back.
+    const before = readFileSync(linkFile, "utf8");
+    writeFileSync(linkFile, "{ not json");
+    await page.locator('.status-bar [data-origin="error"]').waitFor({ timeout: 30_000 });
+    assert.equal(readFileSync(linkFile, "utf8"), "{ not json");
+    writeFileSync(linkFile, before);
+    await page.locator('.status-bar [data-origin="linked"]').waitFor({ timeout: 30_000 });
+
+    const closed = app.waitForEvent("close");
+    await closeWindow(app);
+    await closed;
+    assert.deepEqual(errors, []);
+  } finally {
+    await forceClose(app);
+    rmSync(linkDir, { recursive: true, force: true });
+  }
+});
+
+test("without the feature flag the status bar still says Local", { timeout: 60_000 }, async () => {
+  const { app, page, errors } = await launch([`--folder=${workspace}`]);
+  try {
+    await page.locator('.status-bar [data-origin="off"]').waitFor();
+    assert.equal(await page.locator('.status-bar [data-origin="off"]').innerText(), "Local");
+    const closed = app.waitForEvent("close");
+    await closeWindow(app);
+    await closed;
+    assert.deepEqual(errors, []);
+  } finally {
+    await forceClose(app);
+  }
 });

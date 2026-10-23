@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Build, test and package (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # Downloads Electron (postinstall) and links the workspaces.
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      # Builds every package, the CLI and the IDE, then runs the unit tests
+      # (including a real shell through node-pty and the real TypeScript language server).
+      - run: npm test
+
+      # Drives the built desktop app with Playwright. Moves one temporary file to the Recycle Bin.
+      - run: npm run test:e2e
+
+      # Unsigned installer and portable folder; signing needs the WIN_CSC_* secrets (see README).
+      - run: npm run package
+
+      # Starts the packaged OriginStudio.exe (with the release fuses) over the DevTools protocol.
+      - run: npm run test:package
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OriginStudio-windows-x64
+          path: |
+            apps/ide/release/dist/OriginStudio-Setup-*.exe
+            apps/ide/release/dist/latest.yml
+          if-no-files-found: error
+          retention-days: 14

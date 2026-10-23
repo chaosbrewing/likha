@@ -25,7 +25,15 @@ export const IpcChannel = {
   TerminalResize: "terminal:resize",
   TerminalKill: "terminal:kill",
   TerminalData: "terminal:data",
-  TerminalExit: "terminal:exit"
+  TerminalExit: "terminal:exit",
+
+  LanguageStatus: "language:status",
+  LanguageOpen: "language:open",
+  LanguageChange: "language:change",
+  LanguageClose: "language:close",
+  LanguageRequest: "language:request",
+  LanguageStatusChanged: "language:status-changed",
+  LanguageProblems: "language:problems"
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];

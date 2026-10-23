@@ -14,6 +14,9 @@ import {
   parseConfirmClose,
   parseCreate,
   parseDelete,
+  parseLanguageChange,
+  parseLanguageOpen,
+  parseLanguageRequest,
   parseNoArgs,
   parsePath,
   parseProjectName,
@@ -25,6 +28,7 @@ import {
   parseTerminalWrite,
   parseWrite
 } from "./ipc-validation.js";
+import type { LanguageServerManager } from "./language-server.js";
 import { isTrustedRendererUrl } from "./security.js";
 import { publicShellInfo, type ResolvedShell } from "./shells.js";
 import type { TerminalManager } from "./terminal-manager.js";
@@ -36,8 +40,14 @@ export interface IpcContext {
   shells: ResolvedShell[];
   terminals: TerminalManager;
   workspace(): WorkspaceService | null;
+  /**
+   * Describes the open workspace for the interface, including its ORIGIN
+   * link. `refresh` re-reads the link; otherwise the state from opening is used.
+   */
+  workspaceInfo(refresh: boolean): Promise<WorkspaceInfo | null>;
   /** Opens a folder as the workspace and remembers it for the next launch. */
   openWorkspace(folder: string): Promise<Result<WorkspaceService>>;
+  language: LanguageServerManager;
   confirmClose(allow: boolean): void;
   log(message: string): void;
 }
@@ -89,6 +99,11 @@ export function registerIpc(context: IpcContext): void {
     return workspace ? run(workspace) : fail("NO_WORKSPACE", "Open a folder first.");
   }
 
+  async function describe(refresh = true): Promise<Result<WorkspaceInfo>> {
+    const info = await context.workspaceInfo(refresh);
+    return info ? ok(info) : fail("NO_WORKSPACE", "Open a folder first.");
+  }
+
   /* ---------- app ---------- */
 
   handle(IpcChannel.AppInfo, parseNoArgs, () => ok(context.appInfo));
@@ -113,7 +128,7 @@ export function registerIpc(context: IpcContext): void {
       return ok(null);
     }
     const opened = await context.openWorkspace(folder);
-    return opened.ok ? ok(opened.value.info()) : opened;
+    return opened.ok ? describe() : opened;
   });
 
   handle(IpcChannel.WorkspaceNewProject, parseProjectName, async (name): Promise<Result<WorkspaceInfo | null>> => {
@@ -136,11 +151,11 @@ export function registerIpc(context: IpcContext): void {
     }
     context.log(`Created project ${created.value.root}`);
     const opened = await context.openWorkspace(created.value.root);
-    return opened.ok ? ok(opened.value.info()) : opened;
+    return opened.ok ? describe() : opened;
   });
 
-  handle(IpcChannel.WorkspaceCurrent, parseNoArgs, () => ok(context.workspace()?.info() ?? null));
-  handle(IpcChannel.WorkspaceRefreshInfo, parseNoArgs, () => withWorkspace((w) => ok(w.info())));
+  handle(IpcChannel.WorkspaceCurrent, parseNoArgs, async () => ok(await context.workspaceInfo(false)));
+  handle(IpcChannel.WorkspaceRefreshInfo, parseNoArgs, () => describe(true));
   handle(IpcChannel.WorkspaceList, parsePath, (p) => withWorkspace((w) => w.list(p)));
   handle(IpcChannel.WorkspaceRead, parsePath, (p) => withWorkspace((w) => w.readFile(p)));
   handle(IpcChannel.WorkspaceWrite, parseWrite, ({ path: p, content, options }) =>
@@ -191,6 +206,41 @@ export function registerIpc(context: IpcContext): void {
   handle(IpcChannel.TerminalWrite, parseTerminalWrite, ({ id, data }) => context.terminals.write(id, data));
   handle(IpcChannel.TerminalResize, parseTerminalResize, ({ id, cols, rows }) => context.terminals.resize(id, cols, rows));
   handle(IpcChannel.TerminalKill, parseTerminalId, (id) => context.terminals.kill(id));
+
+  /* ---------- language server ---------- */
+
+  const language = context.language;
+  handle(IpcChannel.LanguageStatus, parseNoArgs, () => ok(language.status));
+  handle(IpcChannel.LanguageOpen, parseLanguageOpen, ({ path: p, languageId, version, text }) => {
+    language.open(p, languageId, version, text);
+    return ok(undefined);
+  });
+  handle(IpcChannel.LanguageChange, parseLanguageChange, ({ path: p, version, changes }) => {
+    language.change(p, version, changes);
+    return ok(undefined);
+  });
+  handle(IpcChannel.LanguageClose, parsePath, (p) => {
+    language.close(p);
+    return ok(undefined);
+  });
+  handle(IpcChannel.LanguageRequest, parseLanguageRequest, (request) => {
+    switch (request.kind) {
+      case "hover":
+        return language.hover(request.path, request.position);
+      case "completion":
+        return language.completion(request.path, request.position, request.context);
+      case "resolve":
+        return language.resolveCompletion(request.token, request.index);
+      case "definition":
+        return language.definition(request.path, request.position);
+      case "references":
+        return language.references(request.path, request.position);
+      case "signature-help":
+        return language.signatureHelp(request.path, request.position);
+      case "diagnostics":
+        return language.diagnostics(request.path);
+    }
+  });
 }
 
 /** The Recycle Bin / Trash, used for every delete. */

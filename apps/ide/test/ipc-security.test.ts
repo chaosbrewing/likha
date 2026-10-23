@@ -1,13 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { IpcChannel } from "@studio/contracts";
+import { IpcChannel, LANGUAGE_LIMITS } from "@studio/contracts";
 import {
   ArgumentError,
   MAX_FILE_CONTENT_LENGTH,
   parseConfirmClose,
   parseCreate,
   parseDelete,
+  parseLanguageChange,
+  parseLanguageOpen,
+  parseLanguageRequest,
   parseNoArgs,
   parsePath,
   parseProjectName,
@@ -121,4 +124,38 @@ test("every channel the preload uses has a main-process handler, and nothing els
     assert.ok(preload.has(name), `${name} is defined but not exposed`);
   }
   assert.doesNotMatch(read("preload.ts"), /require\(|process\.|ipcRenderer\.send\(|exposeInMainWorld\("(?!studio")/);
+});
+
+test("language channel parsers accept well-formed arguments and reject the rest", () => {
+  assert.deepEqual(parseLanguageOpen(["src/a.ts", "typescript", 1, "const a = 1;"]), { path: "src/a.ts", languageId: "typescript", version: 1, text: "const a = 1;" });
+  assert.deepEqual(parseLanguageChange(["src/a.ts", 2, [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }, text: "x" }]]), {
+    path: "src/a.ts",
+    version: 2,
+    changes: [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }, text: "x" }]
+  });
+  assert.deepEqual(parseLanguageRequest([{ kind: "hover", path: "a.ts", position: { line: 1, character: 2 } }]), { kind: "hover", path: "a.ts", position: { line: 1, character: 2 } });
+  assert.deepEqual(parseLanguageRequest([{ kind: "completion", path: "a.ts", position: { line: 0, character: 0 }, context: { triggerKind: 2, triggerCharacter: "." } }]), {
+    kind: "completion",
+    path: "a.ts",
+    position: { line: 0, character: 0 },
+    context: { triggerKind: 2, triggerCharacter: "." }
+  });
+  assert.deepEqual(parseLanguageRequest([{ kind: "resolve", token: 3, index: 0 }]), { kind: "resolve", token: 3, index: 0 });
+  assert.deepEqual(parseLanguageRequest([{ kind: "diagnostics", path: "a.ts" }]), { kind: "diagnostics", path: "a.ts" });
+
+  rejects(() => parseLanguageOpen(["a.ts", "python", 1, ""]), "unsupported language");
+  rejects(() => parseLanguageOpen(["a.ts", "typescript", -1, ""]), "negative version");
+  rejects(() => parseLanguageOpen(["a.ts", "typescript", 1, "x".repeat(LANGUAGE_LIMITS.maxDocumentLength + 1)]), "huge document");
+  rejects(() => parseLanguageChange(["a.ts", 1, "all"]), "string changes");
+  rejects(() => parseLanguageChange(["a.ts", 1, [{ range: { start: { line: -1, character: 0 }, end: { line: 0, character: 0 } }, text: "" }]]), "negative line");
+  rejects(() => parseLanguageChange(["a.ts", 1, [{ range: { start: { line: 0, character: 0 } }, text: "" }]]), "missing end");
+  rejects(() => parseLanguageChange(["a.ts", 1, [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } } }]]), "missing text");
+  rejects(() => parseLanguageRequest([{ kind: "format", path: "a.ts" }]), "unknown request");
+  rejects(() => parseLanguageRequest([{ kind: "hover", path: "a.ts", position: { line: 1.5, character: 0 } }]), "fractional line");
+  rejects(() => parseLanguageRequest([{ kind: "completion", path: "a.ts", position: { line: 0, character: 0 }, context: { triggerKind: 9 } }]), "bad trigger kind");
+  rejects(() => parseLanguageRequest([{ kind: "completion", path: "a.ts", position: { line: 0, character: 0 }, context: { triggerKind: 2, triggerCharacter: ".." } }]), "long trigger character");
+  rejects(() => parseLanguageRequest([{ kind: "resolve", token: 0, index: 0 }]), "token zero");
+  rejects(() => parseLanguageRequest([{ kind: "resolve", token: 1, index: LANGUAGE_LIMITS.maxCompletionItems + 1 }]), "index past the limit");
+  rejects(() => parseLanguageRequest(["hover"]), "string request");
+  rejects(() => parseLanguageRequest([]), "missing request");
 });

@@ -1,19 +1,34 @@
 import { appendFileSync, mkdirSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { BrowserWindow, Menu, app, dialog, screen, session } from "electron";
 import pty from "node-pty";
-import { IpcChannel, type AppInfo, type MenuCommand, type Result } from "@studio/contracts";
-import { WorkspaceService, watchWorkspace, type WorkspaceWatcher } from "@studio/workspace";
+import {
+  IpcChannel,
+  type AppInfo,
+  type MenuCommand,
+  type OriginAdapters,
+  type OriginWorkspaceState,
+  type Result,
+  type WorkspaceInfo
+} from "@studio/contracts";
+import { createLinkFileCoreAdapter, createOfflineAdapters } from "@studio/origin-adapter";
+import { WorkspaceService, listSourceFiles, watchWorkspace, type WorkspaceWatcher } from "@studio/workspace";
 import { loadAppState, saveAppState, type AppState } from "./app-state.js";
 import { registerAppScheme, serveRenderer } from "./app-protocol.js";
+import { enabledFeatureNames, loadFeatureFlags, type FeatureFlags } from "./features.js";
 import { moveToTrash, registerIpc } from "./ipc.js";
+import { LanguageServerManager } from "./language-server.js";
 import { buildMenu } from "./menu.js";
 import { APP_ORIGIN, developmentCsp, parseDevServerUrl } from "./security.js";
 import { detectShells } from "./shells.js";
 import { TerminalManager, killProcessTree, type SpawnPty } from "./terminal-manager.js";
+import { resolveTypeScriptServer } from "./typescript-binary.js";
+import { checkForUpdates } from "./updates.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 const devServerUrl = parseDevServerUrl(process.env.ORIGIN_STUDIO_DEV_SERVER_URL);
 const isDev = devServerUrl !== null;
 
@@ -60,7 +75,10 @@ let workspace: WorkspaceService | null = null;
 let watcher: WorkspaceWatcher | null = null;
 let closeAllowed = false;
 let appState: AppState;
+let features: FeatureFlags = { originCore: false };
+let originState: OriginWorkspaceState | null = null;
 const stateFile = () => path.join(app.getPath("userData"), "app-state.json");
+const featuresFile = () => path.join(app.getPath("userData"), "features.json");
 
 function persistState(): void {
   try {
@@ -90,19 +108,104 @@ const terminals = new TerminalManager(
   killProcessTree
 );
 
+/* ---------- language server ---------- */
+
+const language = new LanguageServerManager({
+  binary: () =>
+    resolveTypeScriptServer({
+      resourcesPath: app.isPackaged ? process.resourcesPath : null,
+      resolve: (id) => require.resolve(id)
+    }),
+  listSourceFiles,
+  onStatus: (status) => send(IpcChannel.LanguageStatusChanged, status),
+  onProblems: (event) => send(IpcChannel.LanguageProblems, event),
+  log
+});
+
+/* ---------- ORIGIN adapters ---------- */
+
+/** Reads a workspace file for the ORIGIN Core adapter through the usual path confinement. */
+async function readWorkspaceFile(workspaceRoot: string, relativePath: string): Promise<string | null> {
+  const current = workspace;
+  if (!current || current.root !== workspaceRoot) {
+    return null;
+  }
+  const result = await current.readFile(relativePath);
+  if (!result.ok) {
+    if (result.error.code === "NOT_FOUND") return null;
+    throw new Error(result.error.message);
+  }
+  if (result.value.kind !== "text") {
+    throw new Error(`${relativePath} is not a text file.`);
+  }
+  return result.value.content;
+}
+
+function createAdapters(flags: FeatureFlags): OriginAdapters {
+  const adapters = createOfflineAdapters();
+  if (flags.originCore) {
+    adapters.core = createLinkFileCoreAdapter({ readWorkspaceFile });
+  }
+  return adapters;
+}
+
+let adapters: OriginAdapters = createOfflineAdapters();
+
+async function describeOrigin(current: WorkspaceService): Promise<OriginWorkspaceState> {
+  if (!features.originCore) {
+    return { feature: "off" };
+  }
+  const status = adapters.core.status();
+  const found = await adapters.core.findLinkedProject(current.root);
+  if (!found.ok) {
+    return { feature: "on", link: "error", detail: found.error.message };
+  }
+  if (found.value === null) {
+    return { feature: "on", link: "none", detail: `Not linked to an ORIGIN project. ${status.detail}` };
+  }
+  const sync = await adapters.core.syncState(found.value.id);
+  return { feature: "on", link: "linked", detail: status.detail, project: found.value, sync: sync.ok ? sync.value : null };
+}
+
+async function workspaceInfo(refresh: boolean): Promise<WorkspaceInfo | null> {
+  const current = workspace;
+  if (!current) {
+    return null;
+  }
+  if (refresh || originState === null) {
+    const state = await describeOrigin(current);
+    if (workspace === current) originState = state;
+  }
+  return { ...current.info(), origin: originState ?? { feature: "off" } };
+}
+
 async function openWorkspace(folder: string): Promise<Result<WorkspaceService>> {
   const opened = await WorkspaceService.open(folder, { trash: moveToTrash });
   if (opened.ok) {
     workspace = opened.value;
+    originState = null;
     watcher?.close();
     const root = workspace.root;
-    watcher = watchWorkspace(root, (event) => send(IpcChannel.WorkspaceChanged, event), {
-      onError: (error) => log(`Stopped watching ${root}: ${error.message}`)
-    });
+    watcher = watchWorkspace(
+      root,
+      (event) => {
+        send(IpcChannel.WorkspaceChanged, event);
+        language.workspaceChanged();
+      },
+      { onError: (error) => log(`Stopped watching ${root}: ${error.message}`) }
+    );
     appState.lastWorkspace = workspace.root;
     persistState();
     mainWindow?.setTitle(`${path.basename(workspace.root)} - Origin Studio`);
     log(`Opened workspace ${workspace.root}`);
+    const state = await describeOrigin(workspace);
+    if (workspace === opened.value) {
+      originState = state;
+      if (state.feature === "on") {
+        log(`ORIGIN Core: ${state.link === "linked" ? `linked to "${state.project.name}" (${state.project.id}, revision ${state.project.revision})` : state.detail}`);
+      }
+    }
+    void language.start(root);
   }
   return opened;
 }
@@ -117,6 +220,44 @@ function initialWorkspaceFolder(): string | null {
     return statSync(candidate).isDirectory() ? path.resolve(candidate) : null;
   } catch {
     return null;
+  }
+}
+
+/* ---------- updates (manual, user-driven) ---------- */
+
+let updateCheckRunning = false;
+async function runUpdateCheck(): Promise<void> {
+  if (updateCheckRunning) return;
+  updateCheckRunning = true;
+  try {
+    const outcome = await checkForUpdates({
+      currentVersion: app.getVersion(),
+      packaged: app.isPackaged,
+      loadUpdater: async () => {
+        try {
+          const { autoUpdater } = await import("electron-updater");
+          autoUpdater.logger = {
+            info: (message: unknown) => log(`Updater: ${String(message)}`),
+            warn: (message: unknown) => log(`Updater warning: ${String(message)}`),
+            error: (message: unknown) => log(`Updater error: ${String(message)}`),
+            debug: () => undefined
+          };
+          return autoUpdater;
+        } catch (error) {
+          log(`electron-updater could not be loaded: ${error instanceof Error ? error.message : String(error)}`);
+          return null;
+        }
+      },
+      ask: async (options) => {
+        const result = await dialog.showMessageBox(mainWindow ?? undefined!, { title: "Origin Studio", noLink: true, ...options });
+        return result.response;
+      },
+      requestClose: () => mainWindow?.close(),
+      log
+    });
+    log(`Update check: ${outcome}`);
+  } finally {
+    updateCheckRunning = false;
   }
 }
 
@@ -159,6 +300,7 @@ function createWindow(): BrowserWindow {
     };
     persistState();
     terminals.killAll();
+    language.terminate();
   });
   win.on("closed", () => {
     mainWindow = null;
@@ -212,6 +354,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on("before-quit", () => {
     terminals.killAll();
+    language.terminate();
     watcher?.close();
   });
   app.on("window-all-closed", () => app.quit());
@@ -231,8 +374,13 @@ if (!app.requestSingleInstanceLock()) {
     }
 
     appState = loadAppState(stateFile(), screen.getAllDisplays().map((display) => display.workArea));
+    features = loadFeatureFlags(featuresFile(), process.env);
+    adapters = createAdapters(features);
     const shells = detectShells();
-    log(`Starting Origin Studio ${app.getVersion()} (${isDev ? "development" : "production"}); shells: ${shells.map((s) => s.id).join(", ") || "none"}`);
+    const enabled = enabledFeatureNames(features);
+    log(
+      `Starting Origin Studio ${app.getVersion()} (${isDev ? "development" : "production"}); shells: ${shells.map((s) => s.id).join(", ") || "none"}; features: ${enabled.join(", ") || "none"}`
+    );
 
     const appInfo: AppInfo = {
       productName: "Origin Studio",
@@ -252,7 +400,9 @@ if (!app.requestSingleInstanceLock()) {
       shells,
       terminals,
       workspace: () => workspace,
+      workspaceInfo,
       openWorkspace,
+      language,
       confirmClose: (allow) => {
         if (allow && mainWindow) {
           closeAllowed = true;
@@ -277,7 +427,8 @@ if (!app.requestSingleInstanceLock()) {
     Menu.setApplicationMenu(
       buildMenu((command: MenuCommand) => send(IpcChannel.MenuCommand, command), {
         dev: isDev,
-        quit: () => mainWindow?.close()
+        quit: () => mainWindow?.close(),
+        checkForUpdates: () => void runUpdateCheck()
       })
     );
   });

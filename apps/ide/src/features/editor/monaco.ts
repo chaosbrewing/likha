@@ -40,17 +40,58 @@ const compilerOptions = {
   strict: true,
   skipLibCheck: true
 };
-// Without a project-wide language server, imports of files and packages that
-// are not open cannot be resolved; hide those errors instead of flagging every import.
-const diagnosticsOptions = {
+// The built-in worker sees open files only, so imports of files and packages
+// that are not open cannot be resolved; hide those errors instead of flagging every import.
+const builtinDiagnostics = {
   noSemanticValidation: false,
   noSyntaxValidation: false,
   diagnosticCodesToIgnore: [2307, 2792, 7016, 2580, 2591]
 };
+const silentDiagnostics = { noSemanticValidation: true, noSyntaxValidation: true, noSuggestionDiagnostics: true };
+const builtinFeatures: monaco.typescript.ModeConfiguration = {
+  completionItems: true,
+  hovers: true,
+  documentSymbols: true,
+  definitions: true,
+  references: true,
+  documentHighlights: true,
+  rename: true,
+  diagnostics: true,
+  documentRangeFormattingEdits: true,
+  signatureHelp: true,
+  onTypeFormattingEdits: true,
+  codeActions: true,
+  inlayHints: true
+};
+// What stays with Monaco's worker while the project-wide server answers the rest.
+const serverModeFeatures: monaco.typescript.ModeConfiguration = {
+  ...builtinFeatures,
+  completionItems: false,
+  hovers: false,
+  definitions: false,
+  references: false,
+  diagnostics: false,
+  signatureHelp: false,
+  codeActions: false,
+  inlayHints: false
+};
+
 for (const defaults of [ts.typescriptDefaults, ts.javascriptDefaults]) {
   defaults.setCompilerOptions(compilerOptions);
-  defaults.setDiagnosticsOptions(diagnosticsOptions);
+  defaults.setDiagnosticsOptions(builtinDiagnostics);
   defaults.setEagerModelSync(true);
+}
+
+/**
+ * Switches Monaco's own TypeScript worker between full service (no language
+ * server available: open files only) and a reduced role (the host's
+ * project-wide server provides diagnostics, completion, hover, navigation).
+ */
+export function setBuiltinTypeScriptEnabled(enabled: boolean): void {
+  for (const defaults of [ts.typescriptDefaults, ts.javascriptDefaults]) {
+    defaults.setDiagnosticsOptions(enabled ? builtinDiagnostics : silentDiagnostics);
+    defaults.setModeConfiguration(enabled ? builtinFeatures : serverModeFeatures);
+  }
 }
 
 monaco.editor.defineTheme("origin-dark", {

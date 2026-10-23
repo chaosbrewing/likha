@@ -7,7 +7,9 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import {
   IpcChannel,
   MENU_COMMANDS,
+  type LanguageServerStatus,
   type MenuCommand,
+  type ProjectProblemsEvent,
   type StudioHostApi,
   type TerminalDataEvent,
   type TerminalExitEvent,
@@ -59,6 +61,21 @@ const api: StudioHostApi = {
     kill: (id) => invoke(IpcChannel.TerminalKill, id),
     onData: (listener) => subscribe<TerminalDataEvent>(IpcChannel.TerminalData, listener),
     onExit: (listener) => subscribe<TerminalExitEvent>(IpcChannel.TerminalExit, listener)
+  },
+  language: {
+    status: () => invoke(IpcChannel.LanguageStatus),
+    open: (path, languageId, version, text) => invoke(IpcChannel.LanguageOpen, path, languageId, version, text),
+    change: (path, version, changes) => invoke(IpcChannel.LanguageChange, path, version, changes),
+    close: (path) => invoke(IpcChannel.LanguageClose, path),
+    hover: (path, position) => invoke(IpcChannel.LanguageRequest, { kind: "hover", path, position }),
+    completion: (path, position, context) => invoke(IpcChannel.LanguageRequest, { kind: "completion", path, position, context }),
+    resolveCompletion: (token, index) => invoke(IpcChannel.LanguageRequest, { kind: "resolve", token, index }),
+    definition: (path, position) => invoke(IpcChannel.LanguageRequest, { kind: "definition", path, position }),
+    references: (path, position) => invoke(IpcChannel.LanguageRequest, { kind: "references", path, position }),
+    signatureHelp: (path, position) => invoke(IpcChannel.LanguageRequest, { kind: "signature-help", path, position }),
+    diagnostics: (path) => invoke(IpcChannel.LanguageRequest, { kind: "diagnostics", path }),
+    onStatus: (listener) => subscribe<LanguageServerStatus>(IpcChannel.LanguageStatusChanged, listener),
+    onProblems: (listener) => subscribe<ProjectProblemsEvent>(IpcChannel.LanguageProblems, listener)
   }
 };
 

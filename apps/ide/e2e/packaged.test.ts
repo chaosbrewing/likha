@@ -79,6 +79,10 @@ test("the packaged executable starts, opens a project, edits a file and runs a s
     await page.waitForFunction(() => !document.querySelector('.tab[data-path="src/index.ts"]')?.classList.contains("dirty"));
     assert.match(readFileSync(path.join(workspace, "src", "index.ts"), "utf8"), /\/\/ packaged\n?$/);
 
+    // The TypeScript language server ships in resources/typescript and starts under the release fuses.
+    await page.locator('.status-bar [data-language-server="ready"]').waitFor({ timeout: 30_000 });
+    assert.match(await page.locator('.status-bar [data-language-server="ready"]').innerText(), /TypeScript \d/);
+
     // node-pty is unpacked from the asar and a real shell runs.
     await page.keyboard.press("Control+Shift+Backquote");
     await page.locator(".terminal-instance .xterm").waitFor({ timeout: 30_000 });

@@ -10,6 +10,7 @@ import { monaco } from "./features/editor/monaco";
 import { useDocuments } from "./features/editor/useDocuments";
 import { Explorer, IconButton } from "./features/explorer/Explorer";
 import { useExplorer } from "./features/explorer/useExplorer";
+import { useLanguageService } from "./features/language/useLanguageService";
 import { TerminalPanel, type TerminalPanelApi } from "./features/terminal/TerminalPanel";
 import { useShortcuts, type ShortcutCommand } from "./hooks/useShortcuts";
 import logo from "./assets/logo.png";
@@ -45,6 +46,36 @@ export function App({ host }: { host: StudioHostApi }) {
   const active = activeDocument(documents.state);
   const dirtyPaths = useMemo(() => new Set(dirtyDocuments(documents.state).map((d) => d.path)), [documents.state]);
 
+  /** Opens a file and moves the cursor to a range or position in it (used by Go to Definition and Problems). */
+  const openLocation = useCallback(
+    async (path: RelativePath, target: monaco.IRange | monaco.IPosition | undefined) => {
+      if (!(await documents.openFile(path))) return;
+      // The editor switches to the file's model in a later render; wait for that before moving the cursor.
+      const reveal = (attempts: number) => {
+        const editor = editorRef.current;
+        const model = documents.modelFor(path);
+        if (!editor || !model) return;
+        if (editor.getModel() !== model) {
+          if (attempts > 0) requestAnimationFrame(() => reveal(attempts - 1));
+          return;
+        }
+        if (target) {
+          if ("startLineNumber" in target) {
+            editor.setSelection(target);
+            editor.revealRangeInCenter(target);
+          } else {
+            editor.setPosition(target);
+            editor.revealLineInCenter(target.lineNumber);
+          }
+        }
+        editor.focus();
+      };
+      reveal(60);
+    },
+    [documents]
+  );
+  const languageService = useLanguageService({ host, documents, openLocation });
+
   const applyWorkspace = useCallback(
     (info: WorkspaceInfo) => {
       setWorkspace(info);
@@ -71,13 +102,17 @@ export function App({ host }: { host: StudioHostApi }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ---------- problems from Monaco markers ---------- */
+  /* ---------- problems: open files from Monaco markers, the rest of the project from the language server ---------- */
 
+  const projectProblems = languageService.projectProblems;
   useEffect(() => {
     const update = () => {
       const list: Problem[] = [];
+      const openPaths = new Set<RelativePath>();
       for (const [path, entry] of documents.models) {
+        openPaths.add(path);
         for (const marker of monaco.editor.getModelMarkers({ resource: entry.model.uri })) {
+          if (marker.severity === monaco.MarkerSeverity.Hint) continue;
           list.push({
             path,
             line: marker.startLineNumber,
@@ -87,12 +122,23 @@ export function App({ host }: { host: StudioHostApi }) {
           });
         }
       }
+      for (const problem of projectProblems?.problems ?? []) {
+        if (openPaths.has(problem.path) || problem.severity === "hint") continue;
+        list.push({
+          path: problem.path,
+          line: problem.range.start.line + 1,
+          column: problem.range.start.character + 1,
+          message: problem.message,
+          severity: problem.severity
+        });
+      }
+      list.sort((x, y) => x.path.localeCompare(y.path) || x.line - y.line || x.column - y.column);
       setProblems(list);
     };
     update();
     const subscription = monaco.editor.onDidChangeMarkers(update);
     return () => subscription.dispose();
-  }, [documents.models, documents.state.documents]);
+  }, [documents.models, documents.state.documents, projectProblems]);
 
   /* ---------- workspace operations ---------- */
 
@@ -346,7 +392,7 @@ export function App({ host }: { host: StudioHostApi }) {
       for (const folder of folders) {
         if (folder === "" || explorer.expanded.has(folder)) void explorer.reload(folder);
       }
-      if (event.paths.some((p) => p === "package.json" || p === ".git/HEAD")) void refreshInfo();
+      if (event.paths.some((p) => p === "package.json" || p === ".git/HEAD" || p === ".origin/project.json" || p === ".origin")) void refreshInfo();
       void documents.checkDisk(event.paths);
     },
     [documents, explorer, refreshInfo]
@@ -386,18 +432,7 @@ export function App({ host }: { host: StudioHostApi }) {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [decideClose]);
 
-  const openProblem = useCallback(
-    async (problem: Problem) => {
-      if (!(await documents.openFile(problem.path))) return;
-      requestAnimationFrame(() => {
-        const editor = editorRef.current;
-        editor?.setPosition({ lineNumber: problem.line, column: problem.column });
-        editor?.revealLineInCenter(problem.line);
-        editor?.focus();
-      });
-    },
-    [documents]
-  );
+  const openProblem = useCallback((problem: Problem) => openLocation(problem.path, { lineNumber: problem.line, column: problem.column }), [openLocation]);
 
   const emptyHint = (
     <div className="hint">
@@ -514,6 +549,7 @@ export function App({ host }: { host: StudioHostApi }) {
           onResize={setPanelHeight}
           output={output}
           problems={problems}
+          problemsScope={projectProblems ? { filesChecked: projectProblems.filesChecked, truncated: projectProblems.truncated } : null}
           onOpenProblem={(problem) => void openProblem(problem)}
           terminal={<TerminalPanel host={host} visible={panelVisible && panelTab === "terminal"} scripts={workspace?.scripts ?? []} apiRef={terminalApi} log={log} />}
         />
@@ -525,6 +561,7 @@ export function App({ host }: { host: StudioHostApi }) {
         cursor={active ? cursor : null}
         dirtyCount={dirtyPaths.size}
         message={status}
+        languageServer={languageService.status}
       />
       {dialogs.element}
     </div>

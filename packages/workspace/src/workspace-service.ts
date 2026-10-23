@@ -135,7 +135,9 @@ export class WorkspaceService {
             ? { state: "invalid", problems: project.problems }
             : { state: "none" },
       branch: readGitBranch(this.root),
-      scripts: readSafeScriptNames(this.root)
+      scripts: readSafeScriptNames(this.root),
+      // The host replaces this with the ORIGIN Core adapter's answer when that feature is on.
+      origin: { feature: "off" }
     };
   }
 

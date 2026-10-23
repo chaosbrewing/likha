@@ -1,13 +1,17 @@
 # ORIGIN integration readiness
 
-**Status: none of these integrations are connected.** Origin Studio runs entirely locally and
-needs no ORIGIN account or internet connection. This document defines the boundaries that
-later phases will connect, so that the IDE's local workflow does not have to be reshaped.
+**Status: no ORIGIN server is connected.** Origin Studio runs entirely locally and needs no
+ORIGIN account or internet connection. One adapter exists beyond the offline set: the
+ORIGIN Core link-file adapter (Phase 6), off by default behind the `origin-core` feature flag.
+This document defines the boundaries that later phases will connect, so that the IDE's local
+workflow does not have to be reshaped.
 
 - Interfaces: [`packages/contracts/src/origin/index.ts`](../../packages/contracts/src/origin/index.ts)
 - Current adapters: [`packages/origin-adapter`](../../packages/origin-adapter) — `createOfflineAdapters()` (every
-  call returns `NOT_CONNECTED`) and `MockTalaAdapter` (in-memory, for contract tests)
-- Contract tests: [`packages/origin-adapter/test/adapters.test.ts`](../../packages/origin-adapter/test/adapters.test.ts)
+  call returns `NOT_CONNECTED`), `createLinkFileCoreAdapter()` (ORIGIN Core from a link file, read-only) and
+  `MockTalaAdapter` (in-memory, for contract tests)
+- Contract tests: [`packages/origin-adapter/test/adapters.test.ts`](../../packages/origin-adapter/test/adapters.test.ts),
+  [`packages/origin-adapter/test/link-file.test.ts`](../../packages/origin-adapter/test/link-file.test.ts)
 
 ## Principles
 
@@ -31,10 +35,12 @@ later phases will connect, so that the IDE's local workflow does not have to be 
 |---|---|
 | Interface | `OriginCoreAdapter`: `findLinkedProject(workspaceRoot)`, `syncState(projectId)` |
 | Types | `OriginProjectId` (opaque, branded), `OriginProjectRecord` (owner, permissions, revision), `SyncState` (`local-only` → `linked` → `syncing` / `conflict`) |
-| Connection point | After `WorkspaceService.open()` in `apps/ide/electron/main.ts` (`openWorkspace`): look up the linked project and surface it in `WorkspaceInfo` and the status bar (where "Local" is shown today) |
+| Connected today | `createLinkFileCoreAdapter()` behind the `origin-core` flag: `findLinkedProject` reads `.origin/project.json` in the workspace (through `WorkspaceService`, so the usual path confinement applies), validates it strictly (`parseOriginLink`) and returns the record; `syncState` reports `linked` at the link's revision. Read-only: nothing is written to ORIGIN or to the link file, and no network is used |
+| Connection point | `openWorkspace` in `apps/ide/electron/main.ts` asks the adapter after the folder opens; `WorkspaceInfo.origin` carries the answer (`off`, `linked`, `none` or `error` with a reason) to the status bar, which re-reads it when the link file changes on disk |
+| Link file | `{ "projectId", "name", "ownerId", "permissions": ["read" \| "write" \| "admin"], "revision" }`; permissions default to `["read"]` |
 | Origin Studio owns | The local folder and its files |
 | ORIGIN owns | Canonical project id, ownership, permissions, structured project state, sync lifecycle |
-| Open questions | How a local folder is linked (marker file vs. ORIGIN-side record); offline edits reconciliation policy |
+| Next | Replace the file lookup with an ORIGIN query (same contract, same tests, credentials in the main process); decide whether ORIGIN writes the link file or the IDE asks ORIGIN by folder; offline edits reconciliation policy |
 
 ### Binhi — website projects
 
