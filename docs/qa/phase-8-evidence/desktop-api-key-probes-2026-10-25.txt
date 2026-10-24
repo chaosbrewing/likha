@@ -1,0 +1,30 @@
+# Desktop API-key probes against the LOCAL development ORIGIN (branch desktop/api-key-read-access + finalization), 2026-10-25
+# Server: pnpm dev on http://127.0.0.1:5055, fresh mysql:8.0 with 19 migrations. Keys are replaced by <label-key>; the key prefix shown is the first 20 hex characters ORIGIN displays to the key holder.
+
+projects: owner=4 other=5
+issued scoped: scopes=["project.read"] expiresAt=null
+issued unscoped: scopes=[] expiresAt=null
+issued revoked: scopes=["project.read"] expiresAt=null
+issued expired: scopes=["project.read"] expiresAt=2026-10-23T13:55:00.363Z
+apiKeys.list scopes by name: Origin Studio (scoped)=["project.read"]; legacy key (no scopes)=[]; to revoke=["project.read"]; expired=["project.read"]
+apiKeys.list exposes keyHash: true
+
+status  probe                                        procedure      result
+200  no credential                                auth.me        null
+200  browser session cookie (unchanged)           auth.me        {"id":6,"name":"Desktop Test Owner"}
+200  scoped key                                   auth.me        {"id":6,"name":"Desktop Test Owner","principal":"api-key","keyPrefix":"e71bfc52bf16843125cc","organisationId":null,"projectId":4,"permissions":["project.read"]}
+200  scoped key, own project                      projects.get   {"id":4,"organisationId":null,"name":"origin-studio-desktop-test","permissions":["project.read","project.manage","deploy.read","deploy.execute"]}
+404  scoped key, other user's project             projects.get   NOT_FOUND: Project not found
+404  scoped key, unknown project                  projects.get   NOT_FOUND: Project not found
+403  unscoped (legacy) key                        auth.me        FORBIDDEN: API key does not grant project.read. Issue a key with Origin Studio read access.
+403  unscoped (legacy) key, own project           projects.get   FORBIDDEN: API key does not grant project.read. Issue a key with Origin Studio read access.
+401  revoked key                                  auth.me        UNAUTHORIZED: API key is not active (revoked).
+401  expired key                                  auth.me        UNAUTHORIZED: API key has expired.
+401  unknown 64-hex key                           auth.me        UNAUTHORIZED: Invalid API key.
+200  malformed bearer                             auth.me        null
+401  no credential                                projects.get   UNAUTHORIZED: Please login (10001)
+200  browser session cookie, own project (unchanged) projects.get   {"id":4,"organisationId":null,"name":"origin-studio-desktop-test"}
+401  scoped key                                   projects.create UNAUTHORIZED: Please login (10001)
+401  scoped key                                   apiKeys.create UNAUTHORIZED: Please login (10001)
+401  scoped key                                   projects.list  UNAUTHORIZED: Please login (10001)
+401  scoped key                                   apiKeys.list   UNAUTHORIZED: Please login (10001)

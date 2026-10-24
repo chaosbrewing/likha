@@ -1,0 +1,92 @@
+# Baseline reconciliation of the three historical 5 s timeouts (Phase 8 finalization, 2026-10-25)
+# Same machine, same node_modules, same vitest for every run. Run A compared the branch with the LOCAL main (b139a96, behind origin/main);
+# run B compared it with the branch's true base origin/main (0e99e11). Secrets: none in this file.
+
+## Run B (authoritative): base origin/main 0e99e11 vs branch 45698cf, three runs each
+# Baseline reconciliation against the branch base origin/main 2026-10-24T13:45:40Z
+node v24.18.0 pnpm 10.4.1 vitest vitest/4.1.11 win32-x64 node-v24.18.0
+cpu: 6 x Intel(R) Core(TM) i5-9500 CPU @ 3.00GHz mem: 8 GiB
+## base 0e99e11 (origin/main, detached)
+0e99e11
+### base run 1 default timeout (5000ms)
+ Test Files  3 passed (3)
+      Tests  55 passed (55)
+   Duration  3.50s (transform 1.23s, setup 0ms, import 749ms, tests 7.71s, environment 0ms)
+### base run 2 default timeout (5000ms)
+ Test Files  3 passed (3)
+      Tests  55 passed (55)
+   Duration  4.11s (transform 2.69s, setup 0ms, import 712ms, tests 9.83s, environment 0ms)
+### base run 3 default timeout (5000ms)
+     × enforces project ownership 5116ms
+     × enforces project ownership 7011ms
+     × a non-owner gets NOT_FOUND (no topology/status leaks) 6738ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  server/aithusa-explain.test.ts > explainTarget (orchestration) > enforces project ownership
+Error: Test timed out in 5000ms.
+ FAIL  server/aithusa-integration-boundary.test.ts > 10. project ownership is enforced > a non-owner gets NOT_FOUND (no topology/status leaks)
+Error: Test timed out in 5000ms.
+ FAIL  server/steward-verdict.test.ts > reviewDeployment (orchestration) > enforces project ownership
+Error: Test timed out in 5000ms.
+ Test Files  3 failed (3)
+      Tests  3 failed | 52 passed (55)
+   Duration  7.88s (transform 4.84s, setup 0ms, import 576ms, tests 21.16s, environment 1ms)
+### base run 30s timeout
+ Test Files  3 passed (3)
+      Tests  55 passed (55)
+   Duration  2.51s (transform 725ms, setup 0ms, import 610ms, tests 5.26s, environment 0ms)
+## branch 45698cf
+45698cf
+### branch run 1 default timeout
+ Test Files  3 passed (3)
+      Tests  55 passed (55)
+   Duration  2.09s (transform 716ms, setup 0ms, import 605ms, tests 4.13s, environment 0ms)
+### branch run 2 default timeout
+     × a non-owner gets NOT_FOUND (no topology/status leaks) 5043ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  server/aithusa-integration-boundary.test.ts > 10. project ownership is enforced > a non-owner gets NOT_FOUND (no topology/status leaks)
+Error: Test timed out in 5000ms.
+ Test Files  1 failed | 2 passed (3)
+      Tests  1 failed | 54 passed (55)
+   Duration  5.82s (transform 3.32s, setup 0ms, import 590ms, tests 14.58s, environment 0ms)
+### branch run 3 default timeout
+ Test Files  3 passed (3)
+      Tests  55 passed (55)
+   Duration  2.58s (transform 711ms, setup 0ms, import 570ms, tests 5.59s, environment 0ms)
+## done; branch now: desktop/api-key-read-access; status: 0 changed files
+
+## Run A: local main b139a96 vs branch 45698cf
+# Baseline reconciliation 2026-10-24T13:40:26Z
+node v24.18.0 pnpm 10.4.1 vitest vitest/4.1.11 win32-x64 node-v24.18.0
+cpu: 6 x Intel(R) Core(TM) i5-9500 CPU @ 3.00GHz
+## main
+b139a96
+### main run 1 default timeout
+     × enforces project ownership 5015ms
+     × a non-owner gets NOT_FOUND (no topology/status leaks) 6301ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  server/aithusa-explain.test.ts > explainTarget (orchestration) > enforces project ownership
+Error: Test timed out in 5000ms.
+ FAIL  server/aithusa-integration-boundary.test.ts > 10. project ownership is enforced > a non-owner gets NOT_FOUND (no topology/status leaks)
+Error: Test timed out in 5000ms.
+ Test Files  2 failed | 1 passed (3)
+      Tests  2 failed | 53 passed (55)
+   Duration  7.38s (transform 3.21s, setup 0ms, import 963ms, tests 16.50s, environment 1ms)
+### main run 2 default timeout
+ Test Files  3 passed (3)
+      Tests  55 passed (55)
+   Duration  4.68s (transform 2.37s, setup 0ms, import 661ms, tests 11.42s, environment 0ms)
+### main run 30s timeout
+ Test Files  3 passed (3)
+      Tests  55 passed (55)
+   Duration  3.97s (transform 2.77s, setup 0ms, import 939ms, tests 8.42s, environment 3ms)
+## branch
+45698cf
+### branch run default timeout
+ Test Files  3 passed (3)
+      Tests  55 passed (55)
+   Duration  2.53s (transform 704ms, setup 0ms, import 590ms, tests 5.56s, environment 0ms)
+### branch run 30s timeout
+ Test Files  3 passed (3)
+      Tests  55 passed (55)
+   Duration  2.89s (transform 736ms, setup 0ms, import 664ms, tests 6.26s, environment 1ms)
+## done; branch now: desktop/api-key-read-access

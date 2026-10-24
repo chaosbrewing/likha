@@ -109,10 +109,13 @@ The log line `Starting Origin Studio …; features: …` shows what is on.
 **`origin-core`** — the ORIGIN connection and project link (Phase 7).
 
 *Connecting.* **ORIGIN > Connect to ORIGIN…** asks for an ORIGIN API key (64 hexadecimal
-characters, the format ORIGIN issues). The key is verified with ORIGIN first and only then
+characters, the format ORIGIN issues). The key must have been issued **with Origin Studio read
+access** (ORIGIN's `project.read` scope, a checkbox on ORIGIN's API keys page); a key without it,
+including every key issued before that option existed, is refused as *forbidden* and never
+stored. A key ORIGIN accepts is verified with ORIGIN first and only then
 stored, encrypted with your Windows user key, in `%AppData%\Origin Studio\origin-credential.bin`.
 It is never written to a project, never logged, and used for reads only. **Disconnect** forgets
-it; **Refresh ORIGIN Status** re-verifies it. A key ORIGIN rejects (invalid, expired, revoked) is
+it; **Refresh ORIGIN Status** re-verifies it. A key ORIGIN rejects (invalid, expired, revoked, or issued without read access) is
 forgotten at once and the status bar says why; when ORIGIN cannot be reached the status bar
 shows **unavailable**, the key is kept, and everything else keeps working.
 
@@ -128,7 +131,9 @@ fixtures in [docs/integration/README.md](docs/integration/README.md) and never t
 network; `http` targets ORIGIN's tRPC procedures and works against an ORIGIN that carries
 ORIGIN's desktop API-key access (verified live against a local development ORIGIN in Phase 8;
 no public ORIGIN deployment exists yet). The live acceptance test is `npm run test:e2e:live`
-with `ORIGIN_STUDIO_LIVE_URL`, `ORIGIN_STUDIO_LIVE_KEY_FILE` and `ORIGIN_STUDIO_LIVE_PROJECT_ID`.
+with `ORIGIN_STUDIO_LIVE_URL`, `ORIGIN_STUDIO_LIVE_KEY_FILE` and `ORIGIN_STUDIO_LIVE_PROJECT_ID`
+(optionally `ORIGIN_STUDIO_LIVE_FOREIGN_PROJECT_ID`, `ORIGIN_STUDIO_LIVE_REVOKED_KEY_FILE` and
+`ORIGIN_STUDIO_LIVE_UNSCOPED_KEY_FILE` for the refusal cases).
 
 *Linking a folder.* A folder is linked to an ORIGIN project when it contains
 `.origin/project.json`:

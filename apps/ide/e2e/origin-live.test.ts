@@ -7,6 +7,8 @@
 //   ORIGIN_STUDIO_LIVE_PROJECT_ID     a project the key may read
 //   ORIGIN_STUDIO_LIVE_FOREIGN_PROJECT_ID   optional: a project the key may NOT read
 //   ORIGIN_STUDIO_LIVE_REVOKED_KEY_FILE     optional: file holding a revoked key
+//   ORIGIN_STUDIO_LIVE_UNSCOPED_KEY_FILE    optional: file holding a valid key issued WITHOUT the
+//                                           project.read scope (a legacy key); it must be refused
 //   ORIGIN_STUDIO_LIVE_EVIDENCE       optional: file to append a JSON evidence record to
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
@@ -22,6 +24,7 @@ const keyFile = process.env.ORIGIN_STUDIO_LIVE_KEY_FILE ?? null;
 const projectId = process.env.ORIGIN_STUDIO_LIVE_PROJECT_ID ?? null;
 const foreignProjectId = process.env.ORIGIN_STUDIO_LIVE_FOREIGN_PROJECT_ID ?? null;
 const revokedKeyFile = process.env.ORIGIN_STUDIO_LIVE_REVOKED_KEY_FILE ?? null;
+const unscopedKeyFile = process.env.ORIGIN_STUDIO_LIVE_UNSCOPED_KEY_FILE ?? null;
 const evidenceFile = process.env.ORIGIN_STUDIO_LIVE_EVIDENCE ?? null;
 const configured = liveUrl !== null && keyFile !== null && projectId !== null;
 
@@ -80,7 +83,7 @@ async function closeApp(app: ElectronApplication) {
   await closed;
 }
 
-test("live ORIGIN: a valid key connects, the linked project is verified by ORIGIN, foreign projects and revoked keys are refused", { timeout: 180_000, skip: !configured && "set ORIGIN_STUDIO_LIVE_URL, ORIGIN_STUDIO_LIVE_KEY_FILE and ORIGIN_STUDIO_LIVE_PROJECT_ID" }, async () => {
+test("live ORIGIN: a scoped key connects, the linked project is verified by ORIGIN, foreign projects, revoked keys and unscoped keys are refused", { timeout: 180_000, skip: !configured && "set ORIGIN_STUDIO_LIVE_URL, ORIGIN_STUDIO_LIVE_KEY_FILE and ORIGIN_STUDIO_LIVE_PROJECT_ID" }, async () => {
   const key = readFileSync(keyFile!, "utf8").trim();
   const linkDir = path.join(workspace, ".origin");
   mkdirSync(linkDir, { recursive: true });
@@ -131,6 +134,21 @@ test("live ORIGIN: a valid key connects, the linked project is verified by ORIGI
     record.revokedKey = await page.locator('.status-bar [data-origin-connection="unauthorized"]').innerText();
     assert.match(record.revokedKey as string, /revoked/);
     assert.ok(!existsSync(credentialFile));
+  }
+
+  if (unscopedKeyFile) {
+    // A key without the project.read scope is a valid, active key whose holder
+    // may own the project; ORIGIN must still refuse it and Studio must not keep it.
+    await connectWith(app, page, readFileSync(unscopedKeyFile, "utf8").trim());
+    const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "Could not connect to ORIGIN" }) });
+    await dialog.waitFor();
+    record.unscopedKeyDialog = (await dialog.innerText()).replace(/\s+/g, " ").trim();
+    assert.match(record.unscopedKeyDialog as string, /project\.read|read access/i);
+    await page.getByRole("button", { name: "OK" }).click();
+    await page.locator('.status-bar [data-origin-connection="unauthorized"]').waitFor();
+    record.unscopedKey = await page.locator('.status-bar [data-origin-connection="unauthorized"]').innerText();
+    assert.match(record.unscopedKey as string, /forbidden/);
+    assert.ok(!existsSync(credentialFile), "an unscoped key is never stored");
   }
 
   await closeApp(app);
