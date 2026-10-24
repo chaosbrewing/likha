@@ -11,8 +11,11 @@ has not happened.
 
 Repositories: ORIGIN `C:\Users\User\ORIGIN`, branch `desktop/api-key-read-access` (from
 `origin/main` `0e99e11`): commit `45698cf` plus the finalization commit; Origin Studio branch
-`phase-8-live-connectivity`: commit `3b627b2` plus the finalization commit. Neither branch was
-pushed; no pull request was opened.
+`phase-8-live-connectivity`: commit `3b627b2` plus the finalization commit. After the owner
+approved on 2026-10-25, the ORIGIN branch was pushed and opened as
+[chaosbrewing/ORIGIN#53](https://github.com/chaosbrewing/ORIGIN/pull/53), and this repository was
+published privately at github.com/chaosbrewing/origin-studio. Merge and deployment still need
+approval.
 
 ## Finalization (2026-10-25)
 
@@ -162,8 +165,8 @@ the revoked key; the file hint was replaced by ORIGIN's project name.
 
 ## Stop point — the exact proposed change for review
 
-1. **Push and review** ORIGIN branch `desktop/api-key-read-access` (`45698cf` + the
-   finalization commit; review package in ORIGIN `docs/DESKTOP_API_KEY_REVIEW_PACKAGE.md`).
+1. **Review and merge** ORIGIN pull request chaosbrewing/ORIGIN#53 (`desktop/api-key-read-access`,
+   `45698cf` + the finalization commit; review package in ORIGIN `docs/DESKTOP_API_KEY_REVIEW_PACKAGE.md`).
    Impact: an ORIGIN API key issued **with the `project.read` scope** becomes a read credential
    for `auth.me` and `projects.get` only; every key already issued keeps granting nothing.
    One additive nullable column (migration 0018 MySQL / 0003 PostgreSQL). No behaviour change
