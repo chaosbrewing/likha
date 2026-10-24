@@ -125,9 +125,10 @@ shows **unavailable**, the key is kept, and everything else keeps working.
 
 Without it, connecting is refused with "No ORIGIN server is configured". `mock` uses the
 fixtures in [docs/integration/README.md](docs/integration/README.md) and never touches the
-network; `http` targets ORIGIN's tRPC procedures but **cannot work against ORIGIN today**
-(ORIGIN authenticates browser sessions only and has no public deployment), which is recorded
-there as well.
+network; `http` targets ORIGIN's tRPC procedures and works against an ORIGIN that carries
+ORIGIN's desktop API-key access (verified live against a local development ORIGIN in Phase 8;
+no public ORIGIN deployment exists yet). The live acceptance test is `npm run test:e2e:live`
+with `ORIGIN_STUDIO_LIVE_URL`, `ORIGIN_STUDIO_LIVE_KEY_FILE` and `ORIGIN_STUDIO_LIVE_PROJECT_ID`.
 
 *Linking a folder.* A folder is linked to an ORIGIN project when it contains
 `.origin/project.json`:
@@ -342,6 +343,7 @@ npm run build           # all packages, the CLI and the IDE (apps/ide/dist)
 npm run typecheck       # packages, CLI, IDE host and IDE interface
 npm test                # builds, then runs all unit tests (packages, CLI, IDE host)
 npm run test:e2e        # end-to-end tests of the built IDE (opens app windows briefly)
+npm run test:e2e:live   # live read-only test against a real ORIGIN (needs ORIGIN_STUDIO_LIVE_* variables; skipped otherwise)
 npm run package         # Windows installer + portable folder in apps/ide/release/dist
 npm run test:package    # smoke test of the packaged OriginStudio.exe
 npm run ide             # start the built IDE
@@ -406,7 +408,18 @@ General:
   phases saw moderate findings in `sprintf-js`, development tooling reached only through
   electron-builder's proxy support; nothing in the shipped app or the CLI depends on it.
 
-## Phase 7 (this milestone)
+## Phase 8 (this milestone)
+
+1. ORIGIN side (branch `desktop/api-key-read-access` in the ORIGIN repository): read-only
+   desktop access with ORIGIN API keys on `auth.me` and `projects.get`, scope-checked, with
+   browser sessions untouched and mutations still session-only; unit and database-backed tests.
+2. Live read-only integration verified between Origin Studio 0.4.0 and a local ORIGIN
+   development server; the transport keeps ORIGIN's rejection reasons.
+3. `npm run test:e2e:live`, a gated acceptance test for any reachable ORIGIN.
+4. Report: [docs/qa/phase-8-report.md](docs/qa/phase-8-report.md). Stop point: deploying the
+   ORIGIN branch somewhere reachable is the owner's call.
+
+## Phase 7
 
 1. ORIGIN connection lifecycle: connect, disconnect, restore and refresh an ORIGIN API key,
    stored encrypted with the OS user key, with honest unauthorized and unavailable states.

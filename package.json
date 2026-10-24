@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p apps/ide/tsconfig.json",
     "test": "npm run build && node --import tsx --test --test-force-exit \"packages/*/test/**/*.test.ts\" \"apps/cli/test/**/*.test.ts\" \"apps/ide/test/**/*.test.ts\"",
     "test:e2e": "node --import tsx --test --test-force-exit \"apps/ide/e2e/ide.smoke.test.ts\"",
+    "test:e2e:live": "node --import tsx --test --test-force-exit \"apps/ide/e2e/origin-live.test.ts\"",
     "postinstall": "install-electron",
     "package": "npm run package -w @studio/ide",
     "test:package": "node --import tsx --test --test-force-exit \"apps/ide/e2e/packaged.test.ts\""

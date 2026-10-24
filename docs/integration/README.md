@@ -1,9 +1,11 @@
 # ORIGIN integration (Phase 7)
 
-**Status in one line:** Origin Studio can hold an ORIGIN connection (verify, store, refresh,
-forget a credential) and verify a folder's project link through it, but **no ORIGIN server a
-desktop client can reach exists yet**, so every adapter in a shipped build is either the
-offline set or a documented mock. Nothing writes to ORIGIN. Editing never depends on any of it.
+**Status in one line (Phase 8):** Origin Studio connects read-only to an ORIGIN that carries
+ORIGIN's `desktop/api-key-read-access` change: verified **live against a local ORIGIN
+development server** on 2026-10-24 (see "What was verified"). **No publicly reachable ORIGIN
+deployment exists yet**, so a shipped build still runs against `mock` or `none` until the
+owner deploys that branch. Sector adapters remain documented mocks. Nothing writes to ORIGIN.
+Editing never depends on any of it.
 
 - Contracts: [`packages/contracts/src/origin/`](../../packages/contracts/src/origin/) —
   `index.ts` (ORIGIN Core v2, adapter set), `connection.ts` (connection lifecycle, transport,
@@ -28,14 +30,15 @@ clean, same as GitHub `chaosbrewing/ORIGIN`) and by probing public hosts without
 | Is there a live ORIGIN endpoint? | **No.** `mychaos.today` answers every path with a domain-parking page (HTTP 200, `/lander`). `chaosorigins.today` does not resolve. The Replit deployment `origin-porscharyder.replit.app` shows Replit's "This app isn't live yet" page (ORIGIN's own domain contract records its last publish failing at start-up). `replit.md` on `main` says "Do not publish yet." | `curl` of `/healthz`, `/api/trpc/auth.me` on each host; `docs/ORIGIN_DOMAIN_CONTRACT.md` §observed |
 | How does ORIGIN authenticate? | Browser sessions only: a JWT cookie issued after Manus OAuth (`/api/oauth/callback`), Replit OIDC, or the dev-only `/api/dev/login`. tRPC's `createContext` calls `sdk.authenticateRequest(req)`, which reads the cookie. | `server/_core/context.ts`, `server/_core/oauth.ts`, `server/_core/sdk.ts` |
 | Do API keys exist? | As records and management procedures, yes: `apiKeys.list/create/revoke/delete` issue 64-hex keys (SHA-256 stored, 20-char prefix shown), scoped to user, organisation, project or service identity, with `active/revoked/expired` status and optional expiry. | `drizzle/schema.ts` `apiKeys`, `server/routers.ts` `apiKeys` |
-| Can an API key call anything? | **Not today.** `validateApiKey` (bearer header or `api_key` query) is implemented in `server/_core/apiKeyAuth.ts` but **never mounted** on any route, and the tRPC context ignores bearer headers. | `grep validateApiKey server/` finds only the definition |
+| Can an API key call anything? | On `main`: **no** (`validateApiKey` exists but is never mounted; the tRPC context ignores bearer keys). On ORIGIN branch **`desktop/api-key-read-access`** (Phase 8, not merged, not deployed): **yes, read-only** — `auth.me` and `projects.get` accept `Authorization: Bearer <key>` through `server/_core/desktopAuth.ts` and `desktopReadProcedure`; every mutation and every other procedure still requires a browser session. Design: ORIGIN `docs/DESKTOP_API_KEY_ACCESS.md`. | ORIGIN `server/desktop-auth.test.ts` (12), `server/desktop-auth.integration.test.ts` (7, real MySQL), `docs/verification/desktop-api-key-probes-2026-10-24.txt` |
+| Live read-only connection from Origin Studio | **Verified locally, 2026-10-24**: ORIGIN branch above running with `pnpm dev` on `http://127.0.0.1:5055` against a disposable MySQL 8 container; a dedicated test account, a disposable project and a project-scoped key issued through `apiKeys.create`; Origin Studio 0.4.0 (`transport: "http"`) connected, showed the project verified with ORIGIN's name, refused another user's project and a revoked key. Not a production deployment. | Studio `apps/ide/e2e/origin-live.test.ts`, ORIGIN `docs/verification/desktop-origin-studio-live-2026-10-24.jsonl` |
 | Canonical project data | `projects.get({ projectId: number })` behind `requireProjectPermission(user, project, "project.read")`; `projects.list`; permissions come from organisation roles (`server/platform/iam.ts`). | `server/routers.ts` lines 173–232 |
 | Sector surfaces | TALA = Aithusa router (`createProposal`, `approveProposal`, `rejectProposal`, `cancelProposal`, `getProposal`, …). AGOS: `shared/agosWorkflow.ts` contract v1, no routes, "planned". LIYAB: sandbox foundation on a draft branch, production refuses every operation. BINHI: standalone product with its own accounts, `docs/ORIGIN_INTEGRATION.md` is a specification. Origin Pocket: **not mentioned anywhere** in ORIGIN, Tala or binhi. | ORIGIN `server/aithusa/router.ts`, ORIGIN-liyab `docs/AGOS_WORKFLOW_CONTRACT.md`, `docs/LIYAB_SANDBOX_FOUNDATION.md`, binhi `docs/ORIGIN_INTEGRATION.md` |
 | Process | ORIGIN's own docs record that the "Chaos Origins App Development Workflow" was not found; the installed Sulit Sequence plugin states it replaces that workflow. | `docs/ORIGIN_PRODUCT_DECISIONS.md` "Current blockers"; Sulit Sequence README |
 
-Consequence: a desktop client cannot sign in to ORIGIN today. Phase 7 therefore builds the
-connection lifecycle against a mock transport, keeps an HTTP transport ready for the day
-ORIGIN mounts API-key authentication, and does not pretend otherwise.
+Consequence after Phase 8: the ORIGIN-side change exists and is verified against a local
+development ORIGIN; what is missing is a reachable deployment of it, which only the owner can
+publish. Until then a shipped build is configured with `mock` or `none`.
 
 ## Mocked versus real
 
@@ -45,7 +48,7 @@ ORIGIN mounts API-key authentication, and does not pretend otherwise.
 | Credential storage (`origin-vault.ts`) | Real | Electron `safeStorage` (DPAPI) in `%AppData%\Origin Studio\origin-credential.bin`; nothing stored without OS encryption |
 | Link file reading (`.origin/project.json`) | Real | Through `WorkspaceService` path confinement; validated; never written |
 | ORIGIN Core transport `mock` | **Mock** | `MockOriginTransport` fixtures (below) |
-| ORIGIN Core transport `http` | Real client, **unverified live** | Targets ORIGIN's `auth.me` and `projects.get` with a bearer key; tested against an in-process fake only; a live ORIGIN answers "null user" today, which the client reports as unauthorized with the reason |
+| ORIGIN Core transport `http` | Real client, **verified live locally** (Phase 8) | Targets ORIGIN's `auth.me` and `projects.get` with a bearer key; unit-tested against an in-process fake and run against a local ORIGIN development server carrying the desktop-access change; keeps tRPC's error reason on 401/403/404; an ORIGIN without that change answers "null user", reported as unauthorized |
 | BINHI, TALA, AGOS, LIYAB, Origin Pocket adapters | **Mock** | `createMockSectorAdapters()`; every `status()` says `transport: "mock"` |
 | Offline adapter set | Real | Used whenever the `origin-core` flag is off |
 
@@ -133,6 +136,7 @@ The link is re-resolved whenever the connection state changes or the link file c
    interface through new, validated IPC channels — the pattern `origin:*` now follows.
 4. Report `status()` honestly, including `transport`.
 
-For ORIGIN Core specifically, ORIGIN must first mount `validateApiKey` for the tRPC routes a
-desktop client needs (`auth.me`, `projects.get`) or offer an equivalent device flow; the
-`HttpOriginTransport` and its tests are written for that shape.
+For ORIGIN Core specifically, ORIGIN's branch `desktop/api-key-read-access` provides exactly
+this shape (bearer API keys on `auth.me` and `projects.get`, read-only, scope-checked). The
+remaining step is deploying it somewhere reachable and issuing a project-scoped key; then
+`apps/ide/e2e/origin-live.test.ts` (`npm run test:e2e:live`) is the acceptance test.

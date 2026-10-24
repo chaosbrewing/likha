@@ -11,13 +11,12 @@ import {
 } from "@studio/contracts";
 
 /*
- * HTTP transport for ORIGIN Core, written against the procedures ORIGIN's
- * source defines today (tRPC `auth.me` and `projects.get`, bearer API keys as
- * `validateApiKey` expects them). It is NOT verified against a live ORIGIN:
- * no public ORIGIN deployment exists, and ORIGIN's tRPC context authenticates
- * browser sessions only (its API-key middleware is defined but not mounted).
- * The tests run it against an in-process fake that answers with the same
- * shapes. See docs/integration/README.md, "What was verified".
+ * HTTP transport for ORIGIN Core: tRPC `auth.me` and `projects.get` with a
+ * bearer API key, the desktop read access ORIGIN added in its Phase 8
+ * (`server/_core/desktopAuth.ts`, `desktopReadProcedure`). Verified against a
+ * local ORIGIN development server; no public ORIGIN deployment exists yet.
+ * The unit tests run it against an in-process fake with the same shapes. See
+ * docs/integration/README.md, "What was verified".
  */
 
 export interface HttpTransportOptions {
@@ -51,6 +50,15 @@ interface TrpcEnvelope {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** The message inside a tRPC error envelope, if the body is one. */
+function trpcErrorMessage(body: unknown): string | null {
+  const raw = Array.isArray(body) ? body[0] : body;
+  if (!isRecord(raw)) return null;
+  const error = (raw as TrpcEnvelope).error;
+  const message = error?.json?.message ?? error?.message;
+  return typeof message === "string" && message ? message : null;
 }
 
 /** Maps ORIGIN's permission vocabulary to the IDE's coarse view. */
@@ -102,14 +110,22 @@ export class HttpOriginTransport implements OriginTransport {
       return fail("UNAVAILABLE", `ORIGIN could not be reached: ${detail}`);
     }
     clearTimeout(timer);
-    if (response.status === 401) return fail("UNAUTHORIZED", "ORIGIN rejected the credential.");
-    if (response.status === 403) return fail("FORBIDDEN", "ORIGIN refused access.");
-    if (response.status === 404) return fail("NOT_FOUND", "ORIGIN has no such procedure or record.");
-    if (response.status >= 300) return fail("UNAVAILABLE", `ORIGIN answered with HTTP ${response.status}.`);
-    let body: unknown;
+    let body: unknown = null;
     try {
       body = await response.json();
     } catch {
+      body = null;
+    }
+    // tRPC answers errors with the HTTP status of the error code and a JSON
+    // envelope carrying the message (e.g. "API key has expired."). Prefer the
+    // message, fall back to the status.
+    const envelopeMessage = trpcErrorMessage(body);
+    if (response.status === 401) return fail("UNAUTHORIZED", envelopeMessage ?? "ORIGIN rejected the credential.");
+    if (response.status === 403) return fail("FORBIDDEN", envelopeMessage ?? "ORIGIN refused access.");
+    if (response.status === 404) return fail("NOT_FOUND", envelopeMessage ?? "ORIGIN has no such procedure or record.");
+    if (response.status === 429) return fail("UNAVAILABLE", envelopeMessage ?? "ORIGIN is rate limiting requests; try again later.");
+    if (response.status >= 300) return fail("UNAVAILABLE", envelopeMessage ?? `ORIGIN answered with HTTP ${response.status}.`);
+    if (body === null) {
       return fail("UNAVAILABLE", "ORIGIN answered with something other than JSON.");
     }
     const raw = Array.isArray(body) ? body[0] : body;
@@ -134,7 +150,7 @@ export class HttpOriginTransport implements OriginTransport {
     const user = result.value;
     if (user === null || user === undefined) {
       // auth.me is public and answers null for an unauthenticated request: the key was not accepted.
-      return fail("UNAUTHORIZED", "ORIGIN did not accept the credential (ORIGIN currently authenticates browser sessions, not API keys).");
+      return fail("UNAUTHORIZED", "ORIGIN did not accept the credential (this ORIGIN may not accept API keys yet).");
     }
     if (!isRecord(user) || (typeof user.id !== "string" && typeof user.id !== "number")) {
       return fail("UNAVAILABLE", "ORIGIN's identity answer had an unexpected shape.");

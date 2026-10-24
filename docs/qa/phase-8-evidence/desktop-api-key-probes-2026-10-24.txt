@@ -1,0 +1,17 @@
+# ORIGIN http://127.0.0.1:5055  project 9  other user's project 10  (2026-10-24T02:00:33.997Z)
+auth.me, no credential                                     HTTP 200  null
+auth.me, browser session cookie (unchanged path)           HTTP 200  {"id":21,"name":"Desktop Test Owner"}
+auth.me, valid project-scoped key                          HTTP 200  {"id":21,"name":"Desktop Test Owner","principal":"api-key","keyPrefix":"7a51b16c23e2a8a6824e","organisationId":null,"projectId":9,"permissions":["project.read"]
+projects.get own project, scoped key                       HTTP 200  {"id":9,"userId":21,"organisationId":null,"name":"origin-studio-desktop-test","permissions":["project.read","project.manage","deploy.read","deploy.execute"]}
+projects.get own project, unscoped key                     HTTP 200  {"id":9,"userId":21,"organisationId":null,"name":"origin-studio-desktop-test","permissions":["project.read","project.manage","deploy.read","deploy.execute"]}
+projects.get OTHER user's project, unscoped key            HTTP 404  error NOT_FOUND: Project not found
+projects.get unknown project, unscoped key                 HTTP 404  error NOT_FOUND: Project not found
+projects.get, no credential                                HTTP 401  error UNAUTHORIZED: Please login (10001)
+projects.get, revoked key                                  HTTP 401  error UNAUTHORIZED: API key is not active (revoked).
+projects.get, expired key                                  HTTP 401  error UNAUTHORIZED: API key has expired.
+auth.me, malformed bearer (not 64 hex)                     HTTP 200  null
+auth.me, unknown 64-hex key                                HTTP 401  error UNAUTHORIZED: Invalid API key.
+projects.list (session-only), valid key                    HTTP 401  error UNAUTHORIZED: Please login (10001)
+projects.create (mutation), valid key                      HTTP 401  error UNAUTHORIZED: Please login (10001)
+apiKeys.create (mutation), valid key                       HTTP 401  error UNAUTHORIZED: Please login (10001)
+projects.get own project, session cookie                   HTTP 200  {"id":9,"userId":21,"organisationId":null,"name":"origin-studio-desktop-test"}

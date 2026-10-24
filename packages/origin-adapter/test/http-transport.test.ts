@@ -11,7 +11,7 @@ import { HttpOriginTransport, toPermissions, validateOriginBaseUrl } from "../sr
 const GOOD = "1".repeat(64);
 const credential = (secret: string): OriginCredential => ({ kind: "api-key", secret });
 const requests: { url: string; authorization: string | undefined }[] = [];
-let mode: "ok" | "null-user" | "trpc-error" | "html" | "500" | "slow" = "ok";
+let mode: "ok" | "null-user" | "trpc-error" | "html" | "500" | "slow" | "expired" | "429" = "ok";
 
 const server: Server = createServer((req: IncomingMessage, res) => {
   requests.push({ url: req.url ?? "", authorization: req.headers.authorization });
@@ -22,6 +22,8 @@ const server: Server = createServer((req: IncomingMessage, res) => {
   if (mode === "slow") return; // never answers
   if (mode === "html") return send(200, "<html>parking</html>", "text/html");
   if (mode === "500") return send(500, { error: "boom" });
+  if (mode === "expired") return send(401, { error: { json: { message: "API key has expired.", code: -32001, data: { code: "UNAUTHORIZED", httpStatus: 401 } } } });
+  if (mode === "429") return send(429, { error: { json: { message: "Too many failed API key attempts. Try again later.", code: -32029, data: { code: "TOO_MANY_REQUESTS", httpStatus: 429 } } } });
   const url = new URL(req.url ?? "/", "http://localhost");
   if (url.pathname.endsWith("/auth.me")) {
     if (mode === "null-user") return send(200, { result: { data: { json: null } } });
@@ -80,7 +82,15 @@ test("rejections, errors, outages and non-JSON answers become the right result c
 
   mode = "null-user";
   const anonymous = await transport.whoAmI(credential(GOOD));
-  assert.ok(!anonymous.ok && anonymous.error.code === "UNAUTHORIZED" && /browser sessions/.test(anonymous.error.message));
+  assert.ok(!anonymous.ok && anonymous.error.code === "UNAUTHORIZED" && /may not accept API keys/.test(anonymous.error.message));
+
+  mode = "expired";
+  const expired = await transport.whoAmI(credential(GOOD));
+  assert.ok(!expired.ok && expired.error.code === "UNAUTHORIZED" && /expired/.test(expired.error.message), "the reason in a 401 envelope is kept");
+
+  mode = "429";
+  const limited = await transport.whoAmI(credential(GOOD));
+  assert.ok(!limited.ok && limited.error.code === "UNAVAILABLE" && /Too many/.test(limited.error.message));
 
   mode = "trpc-error";
   const forbidden = await transport.getProject(credential(GOOD), "42" as OriginProjectId);
