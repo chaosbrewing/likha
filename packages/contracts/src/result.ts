@@ -18,6 +18,12 @@ export type StudioErrorCode =
   | "TERMINAL_LIMIT"
   | "SHELL_UNAVAILABLE"
   | "NOT_CONNECTED"
+  /** A credential was rejected (invalid, expired or revoked). */
+  | "UNAUTHORIZED"
+  /** The credential is valid but may not see that resource. */
+  | "FORBIDDEN"
+  /** The remote system could not be reached or failed; try again later. */
+  | "UNAVAILABLE"
   | "UNTRUSTED_SENDER"
   | "UNKNOWN";
 

@@ -16,6 +16,7 @@ import {
   parseProjectName,
   parseRename,
   parseSaveAs,
+  parseSecret,
   parseTerminalCreate,
   parseTerminalId,
   parseTerminalResize,
@@ -158,4 +159,13 @@ test("language channel parsers accept well-formed arguments and reject the rest"
   rejects(() => parseLanguageRequest([{ kind: "resolve", token: 1, index: LANGUAGE_LIMITS.maxCompletionItems + 1 }]), "index past the limit");
   rejects(() => parseLanguageRequest(["hover"]), "string request");
   rejects(() => parseLanguageRequest([]), "missing request");
+});
+
+test("the ORIGIN credential crosses IPC as one bounded line and nothing else", () => {
+  assert.equal(parseSecret(["a".repeat(64)]), "a".repeat(64));
+  rejects(() => parseSecret([]), "missing secret");
+  rejects(() => parseSecret([42]), "numeric secret");
+  rejects(() => parseSecret(["x".repeat(257)]), "oversized secret");
+  rejects(() => parseSecret(["a\nb"]), "multi-line secret");
+  rejects(() => parseSecret(["a", "b"]), "extra argument");
 });

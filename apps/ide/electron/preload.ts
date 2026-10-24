@@ -9,6 +9,7 @@ import {
   MENU_COMMANDS,
   type LanguageServerStatus,
   type MenuCommand,
+  type OriginConnectionState,
   type ProjectProblemsEvent,
   type StudioHostApi,
   type TerminalDataEvent,
@@ -76,6 +77,13 @@ const api: StudioHostApi = {
     diagnostics: (path) => invoke(IpcChannel.LanguageRequest, { kind: "diagnostics", path }),
     onStatus: (listener) => subscribe<LanguageServerStatus>(IpcChannel.LanguageStatusChanged, listener),
     onProblems: (listener) => subscribe<ProjectProblemsEvent>(IpcChannel.LanguageProblems, listener)
+  },
+  origin: {
+    connection: () => invoke(IpcChannel.OriginConnection),
+    connect: (secret) => invoke(IpcChannel.OriginConnect, secret),
+    disconnect: () => invoke(IpcChannel.OriginDisconnect),
+    refresh: () => invoke(IpcChannel.OriginRefresh),
+    onConnectionChanged: (listener) => subscribe<OriginConnectionState>(IpcChannel.OriginConnectionChanged, listener)
   }
 };
 

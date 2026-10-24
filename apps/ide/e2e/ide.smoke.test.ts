@@ -379,31 +379,70 @@ test("project-wide TypeScript intelligence: problems in unopened files, live dia
   }
 });
 
-test("the ORIGIN Core feature flag links a folder through .origin/project.json, read-only", { timeout: 120_000 }, async () => {
+test("ORIGIN connectivity (mock transport): links stay unverified until a credential is verified; rejections and outages are honest", { timeout: 180_000 }, async () => {
   const linkDir = path.join(workspace, ".origin");
   const linkFile = path.join(linkDir, "project.json");
   rmSync(linkDir, { recursive: true, force: true });
-  const { app, page, errors } = await launch([`--folder=${workspace}`], { ORIGIN_STUDIO_FEATURES: "origin-core" });
+  // A fresh settings folder: no stored credential.
+  const originUserData = path.join(tempRoot, "user-data-origin");
+  const env = { ORIGIN_STUDIO_FEATURES: "origin-core", ORIGIN_STUDIO_ORIGIN_TRANSPORT: "mock", ORIGIN_STUDIO_USER_DATA: originUserData };
+  const { app, page, errors } = await launch([`--folder=${workspace}`], env);
+  const menu = (command: string) => app.evaluate(({ BrowserWindow }, c) => BrowserWindow.getAllWindows()[0]?.webContents.send("menu:command", c), command);
+  const ownerKey = "a".repeat(64);
   try {
     await page.locator('.tree-row[data-path="src"]').waitFor();
+    await page.locator('.status-bar [data-origin-connection="disconnected"]').waitFor();
     await page.locator('.status-bar [data-origin="none"]').waitFor();
-    assert.match(await page.locator('.status-bar [data-origin="none"]').innerText(), /ORIGIN: not linked/);
 
-    // A link file written by another program (ORIGIN, a developer) is picked up without a restart.
+    // A link file appears: known by id only, nothing from it is trusted.
     mkdirSync(linkDir);
-    writeFileSync(linkFile, JSON.stringify({ projectId: "proj_smoke", name: "Smoke Site", ownerId: "user_1", permissions: ["read"], revision: 3 }));
-    await page.locator('.status-bar [data-origin="linked"]').waitFor({ timeout: 30_000 });
-    assert.match(await page.locator('.status-bar [data-origin="linked"]').innerText(), /ORIGIN: Smoke Site/);
-    assert.match(await page.locator('.status-bar [data-origin="linked"]').getAttribute("title").then(String), /proj_smoke.*revision 3.*Read-only/s);
-    await shot(page, "12-origin-linked");
+    writeFileSync(linkFile, JSON.stringify({ projectId: "proj_42", name: "Hint From File" }));
+    await page.locator('.status-bar [data-origin="unverified"]').waitFor({ timeout: 30_000 });
+    assert.match(await page.locator('.status-bar [data-origin="unverified"]').innerText(), /Hint From File \(unverified\)/);
 
-    // An invalid link is reported, never guessed, and nothing is written back.
-    const before = readFileSync(linkFile, "utf8");
+    // A malformed key never reaches the host; an expired one is rejected and forgotten.
+    await menu("origin-connect");
+    const input = page.getByRole("dialog").locator("input[type=password]");
+    await input.fill("not-a-key");
+    assert.ok(await page.getByRole("button", { name: "Connect" }).isDisabled());
+    await input.fill("c".repeat(64));
+    await page.keyboard.press("Enter");
+    await page.getByRole("heading", { name: "Could not connect to ORIGIN" }).waitFor();
+    await page.getByRole("button", { name: "OK" }).click();
+    await page.locator('.status-bar [data-origin-connection="unauthorized"]').waitFor();
+    assert.match(await page.locator('.status-bar [data-origin-connection="unauthorized"]').innerText(), /expired/);
+    assert.ok(!existsSync(path.join(originUserData, "origin-credential.bin")), "a rejected credential is never stored");
+
+    // A valid key: verified, stored encrypted, and the link becomes ORIGIN's record.
+    await menu("origin-connect");
+    await page.getByRole("dialog").locator("input[type=password]").fill(ownerKey);
+    await page.keyboard.press("Enter");
+    await page.locator('.status-bar [data-origin-connection="connected"]').waitFor({ timeout: 30_000 });
+    assert.match(await page.locator('.status-bar [data-origin-connection="connected"]').innerText(), /ORIGIN: Mock Owner/);
+    await page.locator('.status-bar [data-origin="verified"]').waitFor({ timeout: 30_000 });
+    assert.match(await page.locator('.status-bar [data-origin="verified"]').innerText(), /Binhi Site/);
+    const credentialFile = path.join(originUserData, "origin-credential.bin");
+    assert.ok(existsSync(credentialFile), "the credential is stored");
+    assert.ok(!readFileSync(credentialFile).toString("latin1").includes(ownerKey), "but never in plain text");
+    const log = readFileSync(path.join(originUserData, "logs", "main.log"), "utf8");
+    assert.ok(!log.includes(ownerKey), "the key is never logged");
+    assert.equal(JSON.parse(readFileSync(linkFile, "utf8")).name, "Hint From File", "the link file is never rewritten with ORIGIN data");
+    await shot(page, "12-origin-connected");
+
+    // A project the credential may not see is reported, not guessed; a broken link file too.
+    writeFileSync(linkFile, JSON.stringify({ projectId: "proj_nope" }));
+    await page.locator('.status-bar [data-origin="unauthorized"]').waitFor({ timeout: 30_000 });
     writeFileSync(linkFile, "{ not json");
     await page.locator('.status-bar [data-origin="error"]').waitFor({ timeout: 30_000 });
-    assert.equal(readFileSync(linkFile, "utf8"), "{ not json");
-    writeFileSync(linkFile, before);
-    await page.locator('.status-bar [data-origin="linked"]').waitFor({ timeout: 30_000 });
+    writeFileSync(linkFile, JSON.stringify({ projectId: "proj_42" }));
+    await page.locator('.status-bar [data-origin="verified"]').waitFor({ timeout: 30_000 });
+
+    // Disconnect forgets the credential; the link falls back to unverified.
+    await menu("origin-disconnect");
+    await page.getByRole("button", { name: "Disconnect" }).click();
+    await page.locator('.status-bar [data-origin-connection="disconnected"]').waitFor();
+    await page.locator('.status-bar [data-origin="unverified"]').waitFor({ timeout: 30_000 });
+    assert.ok(!existsSync(credentialFile));
 
     const closed = app.waitForEvent("close");
     await closeWindow(app);
@@ -411,7 +450,68 @@ test("the ORIGIN Core feature flag links a folder through .origin/project.json, 
     assert.deepEqual(errors, []);
   } finally {
     await forceClose(app);
+  }
+
+  // A stored credential is restored at the next start; offline, work continues and the state is "unavailable".
+  const second = await launch([`--folder=${workspace}`], env);
+  try {
+    await second.page.locator('.tree-row[data-path="src"]').waitFor();
+    await second.app.evaluate(({ BrowserWindow }, c) => BrowserWindow.getAllWindows()[0]?.webContents.send("menu:command", c), "origin-connect");
+    await second.page.getByRole("dialog").locator("input[type=password]").fill(ownerKey);
+    await second.page.keyboard.press("Enter");
+    await second.page.locator('.status-bar [data-origin-connection="connected"]').waitFor({ timeout: 30_000 });
+    const closed = second.app.waitForEvent("close");
+    await closeWindow(second.app);
+    await closed;
+  } finally {
+    await forceClose(second.app);
+  }
+  const restored = await launch([`--folder=${workspace}`], env);
+  try {
+    await restored.page.locator('.status-bar [data-origin-connection="connected"]').waitFor({ timeout: 30_000 });
+    await restored.page.locator('.status-bar [data-origin="verified"]').waitFor({ timeout: 30_000 });
+    const closed = restored.app.waitForEvent("close");
+    await closeWindow(restored.app);
+    await closed;
+    assert.deepEqual(restored.errors, []);
+  } finally {
+    await forceClose(restored.app);
+  }
+  const offline = await launch([`--folder=${workspace}`], { ...env, ORIGIN_STUDIO_ORIGIN_MOCK_OFFLINE: "1" });
+  try {
+    await offline.page.locator('.status-bar [data-origin-connection="unavailable"]').waitFor({ timeout: 30_000 });
+    await offline.page.locator('.status-bar [data-origin="unverified"]').waitFor({ timeout: 30_000 });
+    // Editing is untouched while ORIGIN is unreachable.
+    await offline.page.locator('.tree-row[data-path="src"]').click();
+    await offline.page.locator('.tree-row[data-path="src/index.ts"]').click();
+    await offline.page.locator('.monaco-editor .view-lines').waitFor();
+    assert.ok(existsSync(path.join(originUserData, "origin-credential.bin")), "an outage does not forget the credential");
+    const closed = offline.app.waitForEvent("close");
+    await closeWindow(offline.app);
+    await closed;
+    assert.deepEqual(offline.errors, []);
+  } finally {
+    await forceClose(offline.app);
     rmSync(linkDir, { recursive: true, force: true });
+  }
+});
+
+test("with the feature on but no ORIGIN server configured, connecting is refused with a clear message", { timeout: 60_000 }, async () => {
+  const { app, page, errors } = await launch([`--folder=${workspace}`], { ORIGIN_STUDIO_FEATURES: "origin-core", ORIGIN_STUDIO_USER_DATA: path.join(tempRoot, "user-data-noserver") });
+  try {
+    await page.locator('.status-bar [data-origin-connection="disconnected"]').waitFor();
+    assert.match(await page.locator('.status-bar [data-origin-connection="disconnected"]').getAttribute("title").then(String), /No ORIGIN server is configured/);
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.send("menu:command", "origin-connect"));
+    await page.getByRole("dialog").locator("input[type=password]").fill("a".repeat(64));
+    await page.keyboard.press("Enter");
+    await page.getByRole("heading", { name: "Could not connect to ORIGIN" }).waitFor();
+    await page.getByRole("button", { name: "OK" }).click();
+    const closed = app.waitForEvent("close");
+    await closeWindow(app);
+    await closed;
+    assert.deepEqual(errors, []);
+  } finally {
+    await forceClose(app);
   }
 });
 

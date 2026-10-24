@@ -1,4 +1,4 @@
-import type { OriginProjectRecord, SyncState } from "./origin/index.js";
+import type { OriginConnectionState, OriginProjectLink, OriginProjectResolution, SyncState } from "./origin/index.js";
 
 /**
  * Paths crossing the host boundary are always workspace-relative, use "/" as
@@ -24,14 +24,17 @@ export type ProjectStatus =
  * What the ORIGIN Core adapter knows about the open folder. "off" when the
  * origin-core feature flag is not set, so the status bar shows "Local".
  */
+export type OriginLinkState =
+  /** The folder has no link file. */
+  | { kind: "none"; detail: string }
+  /** The link file exists but could not be read or is invalid; `detail` says why. */
+  | { kind: "error"; detail: string }
+  /** The link names a project; `resolution` says what ORIGIN confirmed about it. */
+  | { kind: "linked"; link: OriginProjectLink; resolution: OriginProjectResolution; sync: SyncState | null };
+
 export type OriginWorkspaceState =
   | { feature: "off" }
-  /** The link file names an ORIGIN project. Read-only: the IDE never writes to ORIGIN. */
-  | { feature: "on"; link: "linked"; detail: string; project: OriginProjectRecord; sync: SyncState | null }
-  /** The feature is on but this folder has no link file. */
-  | { feature: "on"; link: "none"; detail: string }
-  /** The link file exists but could not be read or is invalid; `detail` says why. */
-  | { feature: "on"; link: "error"; detail: string };
+  | { feature: "on"; connection: OriginConnectionState; link: OriginLinkState };
 
 export interface WorkspaceInfo {
   /** Folder name, for display. */

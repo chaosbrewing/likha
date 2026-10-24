@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import {
   TERMINAL_LIMITS,
   fail,
@@ -39,9 +39,26 @@ interface Session {
  * a terminal or the app never leaves processes behind. Best effort: the
  * pseudoconsole is closed right after this regardless.
  */
-export function killProcessTree(pid: number): void {
+export interface KillOptions {
+  /**
+   * Finish before returning. Used when the app is quitting: a kill still in
+   * flight when Electron tears down its event loop aborts the process
+   * (exit code 0xC0000409 on Windows), so nothing may be left pending.
+   */
+  wait?: boolean;
+}
+
+export function killProcessTree(pid: number, options: KillOptions = {}): void {
   if (process.platform === "win32") {
-    execFile("taskkill", ["/PID", String(pid), "/T", "/F"], () => undefined);
+    if (options.wait) {
+      try {
+        execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore", timeout: 5000, windowsHide: true });
+      } catch {
+        // Already gone, or taskkill timed out: the pseudoconsole is closed next regardless.
+      }
+      return;
+    }
+    execFile("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true }, () => undefined);
     return;
   }
   try {
@@ -64,7 +81,7 @@ export class TerminalManager {
     private readonly spawn: SpawnPty,
     private readonly events: TerminalEvents,
     private readonly env: NodeJS.ProcessEnv = process.env,
-    private readonly killTree: (pid: number) => void = () => undefined
+    private readonly killTree: (pid: number, options?: KillOptions) => void = () => undefined
   ) {}
 
   get count(): number {
@@ -146,16 +163,16 @@ export class TerminalManager {
     return ok(undefined);
   }
 
-  /** Ends every session. Called when the window closes or the app quits. */
-  killAll(): void {
+  /** Ends every session. Called when the window closes or the app quits (`wait` so nothing is pending at exit). */
+  killAll(options: KillOptions = {}): void {
     for (const session of [...this.sessions.values()]) {
-      this.terminate(session);
+      this.terminate(session, options);
     }
   }
 
-  private terminate(session: Session): void {
+  private terminate(session: Session, options: KillOptions = {}): void {
     this.sessions.delete(session.info.id);
-    this.killTree(session.pty.pid);
+    this.killTree(session.pty.pid, options);
     try {
       session.pty.kill();
     } catch {

@@ -244,3 +244,15 @@ export function parseLanguageRequest(args: unknown[]): LanguageRequest {
       throw new ArgumentError("request.kind is not a known language request.");
   }
 }
+
+/* ---------- ORIGIN connection ---------- */
+
+/** The credential typed by the user: only its type and length are checked here; the connection validates the format. */
+export function parseSecret(args: unknown[]): string {
+  expectCount(args, 1);
+  const value = string(args[0], "secret", 256);
+  if (/[\r\n\u0000]/.test(value)) {
+    throw new ArgumentError("secret must be a single line.");
+  }
+  return value;
+}

@@ -1,4 +1,4 @@
-import type { LanguageServerStatus, WorkspaceInfo } from "@studio/contracts";
+import type { LanguageServerStatus, OriginConnectionState, OriginLinkState, WorkspaceInfo } from "@studio/contracts";
 
 interface StatusBarProps {
   workspace: WorkspaceInfo | null;
@@ -7,41 +7,74 @@ interface StatusBarProps {
   dirtyCount: number;
   message: string;
   languageServer: LanguageServerStatus;
+  /** App-level ORIGIN connection (shown even before a folder opens, when the feature is on). */
+  originConnection: OriginConnectionState | null;
 }
 
-function OriginItem({ workspace }: { workspace: WorkspaceInfo | null }) {
+function connectionLabel(connection: OriginConnectionState): { text: string; title: string; warning: boolean; icon: string } {
+  switch (connection.state) {
+    case "connected":
+      return { text: `ORIGIN: ${connection.identity.displayName}`, title: `Connected to ORIGIN (${connection.transport}) as ${connection.identity.displayName}; verified ${connection.verifiedAt}. Read-only.`, warning: false, icon: "codicon-plug" };
+    case "connecting":
+      return { text: "ORIGIN: connecting…", title: "Verifying the credential with ORIGIN.", warning: false, icon: "codicon-sync codicon-modifier-spin" };
+    case "unauthorized":
+      return { text: `ORIGIN: sign in again (${connection.reason})`, title: `${connection.detail} The credential has been forgotten; use ORIGIN > Connect to ORIGIN…`, warning: true, icon: "codicon-warning" };
+    case "unavailable":
+      return { text: "ORIGIN: unavailable", title: `${connection.detail}${connection.lastConnectedAt ? ` Last connected ${connection.lastConnectedAt}.` : ""} Work continues locally.`, warning: true, icon: "codicon-debug-disconnect" };
+    default:
+      return { text: "ORIGIN: not connected", title: `${connection.detail} Use ORIGIN > Connect to ORIGIN…`, warning: false, icon: "codicon-debug-disconnect" };
+  }
+}
+
+function linkLabel(link: OriginLinkState): { text: string; title: string; warning: boolean; status: string } {
+  switch (link.kind) {
+    case "none":
+      return { text: "not linked", title: link.detail, warning: false, status: "none" };
+    case "error":
+      return { text: "link invalid", title: link.detail, warning: true, status: "error" };
+    default: {
+      const { link: projectLink, resolution } = link;
+      if (resolution.status === "verified") {
+        const { project } = resolution;
+        return {
+          text: `${project.name} ✓`,
+          title: `Linked to ORIGIN project ${project.id} (${project.permissions.join("/")}, revision ${project.revision}); verified by ORIGIN ${resolution.verifiedAt}. Read-only.`,
+          warning: false,
+          status: "verified"
+        };
+      }
+      if (resolution.status === "unauthorized") {
+        return { text: `${projectLink.projectId} (no access)`, title: `${resolution.detail} The link file is not trusted until ORIGIN confirms it.`, warning: true, status: "unauthorized" };
+      }
+      return { text: `${projectLink.nameHint ?? projectLink.projectId} (unverified)`, title: `${resolution.detail} The link file names ${projectLink.projectId}; nothing from it is trusted until ORIGIN confirms it.`, warning: false, status: "unverified" };
+    }
+  }
+}
+
+function OriginItem({ workspace, connection }: { workspace: WorkspaceInfo | null; connection: OriginConnectionState | null }) {
   const origin = workspace?.origin;
-  if (!origin || origin.feature === "off") {
+  const featureOn = (origin && origin.feature === "on") || connection !== null;
+  if (!featureOn) {
     return (
       <span className="status-item" data-origin="off" title="Everything runs locally. No ORIGIN account or internet connection is needed.">
         Local
       </span>
     );
   }
-  if (origin.link === "linked") {
-    const { project } = origin;
-    const revision = origin.sync?.phase === "linked" ? origin.sync.revision : project.revision;
-    return (
-      <span
-        className="status-item"
-        data-origin="linked"
-        title={`Linked to ORIGIN project ${project.id} (revision ${revision}, ${project.permissions.join("/")}). Read-only: Origin Studio reads the link and never writes to ORIGIN.\n${origin.detail}`}
-      >
-        <span className="codicon codicon-link" aria-hidden="true" /> ORIGIN: {project.name}
-      </span>
-    );
-  }
-  if (origin.link === "none") {
-    return (
-      <span className="status-item" data-origin="none" title={origin.detail}>
-        ORIGIN: not linked
-      </span>
-    );
-  }
+  const current = origin && origin.feature === "on" ? origin.connection : connection!;
+  const conn = connectionLabel(current);
+  const link = origin && origin.feature === "on" ? linkLabel(origin.link) : null;
   return (
-    <span className="status-item warning" data-origin="error" title={origin.detail}>
-      <span className="codicon codicon-warning" aria-hidden="true" /> ORIGIN: link invalid
-    </span>
+    <>
+      <span className={`status-item${conn.warning ? " warning" : ""}`} data-origin-connection={current.state} title={conn.title}>
+        <span className={`codicon ${conn.icon}`} aria-hidden="true" /> {conn.text}
+      </span>
+      {link ? (
+        <span className={`status-item${link.warning ? " warning" : ""}`} data-origin={link.status} title={link.title}>
+          <span className={`codicon ${link.status === "verified" ? "codicon-link" : link.warning ? "codicon-warning" : "codicon-link"}`} aria-hidden="true" /> {link.text}
+        </span>
+      ) : null}
+    </>
   );
 }
 
@@ -69,7 +102,7 @@ function LanguageServerItem({ status, hasWorkspace }: { status: LanguageServerSt
   }
 }
 
-export function StatusBar({ workspace, language, cursor, dirtyCount, message, languageServer }: StatusBarProps) {
+export function StatusBar({ workspace, language, cursor, dirtyCount, message, languageServer, originConnection }: StatusBarProps) {
   const project = workspace?.project;
   const projectLabel =
     project?.state === "valid"
@@ -116,7 +149,7 @@ export function StatusBar({ workspace, language, cursor, dirtyCount, message, la
         ) : null}
         {language ? <span className="status-item">{language}</span> : null}
         <LanguageServerItem status={languageServer} hasWorkspace={workspace !== null} />
-        <OriginItem workspace={workspace} />
+        <OriginItem workspace={workspace} connection={originConnection} />
       </div>
     </footer>
   );

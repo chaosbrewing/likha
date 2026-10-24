@@ -64,6 +64,10 @@ export function buildMenu(send: (command: MenuCommand) => void, options: { dev: 
       submenu: [item("New Terminal", "new-terminal", "CmdOrCtrl+Shift+`")]
     },
     {
+      label: "&ORIGIN",
+      submenu: [item("Connect to ORIGIN…", "origin-connect"), item("Disconnect from ORIGIN", "origin-disconnect"), { type: "separator" }, item("Refresh ORIGIN Status", "origin-refresh")]
+    },
+    {
       label: "&Help",
       submenu: [{ label: "Check for Updates…", click: options.checkForUpdates }, { type: "separator" }, item("About Origin Studio", "about")]
     }

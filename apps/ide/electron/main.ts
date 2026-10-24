@@ -2,18 +2,24 @@ import { appendFileSync, mkdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { BrowserWindow, Menu, app, dialog, screen, session } from "electron";
+import { BrowserWindow, Menu, app, dialog, safeStorage, screen, session } from "electron";
 import pty from "node-pty";
 import {
   IpcChannel,
+  fail,
+  ok,
   type AppInfo,
   type MenuCommand,
   type OriginAdapters,
+  type OriginConnectionState,
+  type OriginLinkState,
   type OriginWorkspaceState,
   type Result,
   type WorkspaceInfo
 } from "@studio/contracts";
-import { createLinkFileCoreAdapter, createOfflineAdapters } from "@studio/origin-adapter";
+import { OriginConnection, createLinkFileCoreAdapter, createMockSectorAdapters, createOfflineAdapters } from "@studio/origin-adapter";
+import { NONE_ORIGIN_TRANSPORT, createOriginTransport, loadOriginConfig, type OriginConfig } from "./origin-config.js";
+import { createSafeStorageVault } from "./origin-vault.js";
 import { WorkspaceService, listSourceFiles, watchWorkspace, type WorkspaceWatcher } from "@studio/workspace";
 import { loadAppState, saveAppState, type AppState } from "./app-state.js";
 import { registerAppScheme, serveRenderer } from "./app-protocol.js";
@@ -141,31 +147,74 @@ async function readWorkspaceFile(workspaceRoot: string, relativePath: string): P
   return result.value.content;
 }
 
-function createAdapters(flags: FeatureFlags): OriginAdapters {
-  const adapters = createOfflineAdapters();
-  if (flags.originCore) {
-    adapters.core = createLinkFileCoreAdapter({ readWorkspaceFile });
-  }
-  return adapters;
-}
-
 let adapters: OriginAdapters = createOfflineAdapters();
+let originConfig: OriginConfig = { transport: "none", baseUrl: null, mockOffline: false, problem: null };
+/** The ORIGIN connection; null while the origin-core feature is off. */
+let connection: OriginConnection | null = null;
+
+/**
+ * Assembles the ORIGIN side for this run: the transport named in origin.json,
+ * the encrypted credential vault, the connection and the sector adapters.
+ * With the feature off everything stays offline and nothing is read.
+ */
+function setUpOrigin(flags: FeatureFlags): void {
+  if (!flags.originCore) {
+    adapters = createOfflineAdapters();
+    connection = null;
+    return;
+  }
+  originConfig = loadOriginConfig(path.join(app.getPath("userData"), "origin.json"), process.env);
+  if (originConfig.problem) log(`ORIGIN configuration: ${originConfig.problem}`);
+  const transport = createOriginTransport(originConfig);
+  if (!transport.ok) log(`ORIGIN transport unavailable: ${transport.error.message}`);
+  const wire = transport.ok ? transport.value : NONE_ORIGIN_TRANSPORT;
+  const vault = createSafeStorageVault({ file: path.join(app.getPath("userData"), "origin-credential.bin"), cipher: safeStorage, log });
+  connection = new OriginConnection({
+    transport: wire,
+    vault,
+    log,
+    onChange: (state) => {
+      send(IpcChannel.OriginConnectionChanged, state);
+      // The link's verification depends on the connection; recompute it for the next workspace query.
+      originState = null;
+    }
+  });
+  adapters = {
+    core: createLinkFileCoreAdapter({ readWorkspaceFile, transport: wire }),
+    ...createMockSectorAdapters()
+  };
+  log(`ORIGIN Core: transport ${wire.kind} (${wire.target}); credential storage ${vault.description}; sector adapters are mocks`);
+}
 
 async function describeOrigin(current: WorkspaceService): Promise<OriginWorkspaceState> {
-  if (!features.originCore) {
+  if (!features.originCore || !connection) {
     return { feature: "off" };
   }
-  const status = adapters.core.status();
-  const found = await adapters.core.findLinkedProject(current.root);
+  const found = await adapters.core.findLink(current.root);
+  let link: OriginLinkState;
   if (!found.ok) {
-    return { feature: "on", link: "error", detail: found.error.message };
+    link = { kind: "error", detail: found.error.message };
+  } else if (found.value === null) {
+    link = { kind: "none", detail: `This folder has no .origin/project.json link. ${adapters.core.status().detail}` };
+  } else {
+    const resolved = await adapters.core.resolveProject(found.value, connection.credentialForRequests());
+    const resolution = resolved.ok ? resolved.value : { status: "unverified" as const, reason: "unavailable" as const, detail: resolved.error.message };
+    const sync = resolution.status === "verified" ? await adapters.core.syncState(found.value.projectId) : null;
+    link = { kind: "linked", link: found.value, resolution, sync: sync?.ok ? sync.value : null };
   }
-  if (found.value === null) {
-    return { feature: "on", link: "none", detail: `Not linked to an ORIGIN project. ${status.detail}` };
-  }
-  const sync = await adapters.core.syncState(found.value.id);
-  return { feature: "on", link: "linked", detail: status.detail, project: found.value, sync: sync.ok ? sync.value : null };
+  return { feature: "on", connection: connection.state, link };
 }
+
+const originApi = {
+  connection: (): OriginConnectionState => connection?.state ?? { state: "disconnected", detail: "The origin-core feature is off." },
+  connect: async (secret: string) => (connection ? connection.connect(secret) : fail("NOT_CONNECTED", "The origin-core feature is off.")),
+  disconnect: async (): Promise<Result<void>> => {
+    if (!connection) return fail("NOT_CONNECTED", "The origin-core feature is off.");
+    await connection.disconnect();
+    return ok(undefined);
+  },
+  refresh: async (): Promise<Result<OriginConnectionState>> => (connection ? ok(await connection.refresh()) : fail("NOT_CONNECTED", "The origin-core feature is off."))
+};
 
 async function workspaceInfo(refresh: boolean): Promise<WorkspaceInfo | null> {
   const current = workspace;
@@ -202,7 +251,14 @@ async function openWorkspace(folder: string): Promise<Result<WorkspaceService>> 
     if (workspace === opened.value) {
       originState = state;
       if (state.feature === "on") {
-        log(`ORIGIN Core: ${state.link === "linked" ? `linked to "${state.project.name}" (${state.project.id}, revision ${state.project.revision})` : state.detail}`);
+        const { link } = state;
+        log(
+          `ORIGIN link: ${
+            link.kind === "linked"
+              ? `${link.link.projectId} ${link.resolution.status}${link.resolution.status === "verified" ? ` as "${link.resolution.project.name}"` : ` (${link.resolution.reason})`}`
+              : link.kind
+          }`
+        );
       }
     }
     void language.start(root);
@@ -299,7 +355,7 @@ function createWindow(): BrowserWindow {
       maximized: win.isMaximized()
     };
     persistState();
-    terminals.killAll();
+    terminals.killAll({ wait: true });
     language.terminate();
   });
   win.on("closed", () => {
@@ -353,7 +409,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on("before-quit", () => {
-    terminals.killAll();
+    terminals.killAll({ wait: true });
     language.terminate();
     watcher?.close();
   });
@@ -375,7 +431,7 @@ if (!app.requestSingleInstanceLock()) {
 
     appState = loadAppState(stateFile(), screen.getAllDisplays().map((display) => display.workArea));
     features = loadFeatureFlags(featuresFile(), process.env);
-    adapters = createAdapters(features);
+    setUpOrigin(features);
     const shells = detectShells();
     const enabled = enabledFeatureNames(features);
     log(
@@ -403,6 +459,7 @@ if (!app.requestSingleInstanceLock()) {
       workspaceInfo,
       openWorkspace,
       language,
+      origin: originApi,
       confirmClose: (allow) => {
         if (allow && mainWindow) {
           closeAllowed = true;
@@ -411,6 +468,9 @@ if (!app.requestSingleInstanceLock()) {
       },
       log
     });
+
+    // A stored credential is verified in the background; the interface hears about the outcome.
+    void connection?.restore();
 
     const initial = initialWorkspaceFolder();
     if (initial) {

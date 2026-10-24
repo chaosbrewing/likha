@@ -5,6 +5,8 @@ import {
   fail,
   ok,
   type AppInfo,
+  type OriginConnectionState,
+  type OriginIdentity,
   type Result,
   type WorkspaceInfo
 } from "@studio/contracts";
@@ -22,6 +24,7 @@ import {
   parseProjectName,
   parseRename,
   parseSaveAs,
+  parseSecret,
   parseTerminalCreate,
   parseTerminalId,
   parseTerminalResize,
@@ -48,6 +51,13 @@ export interface IpcContext {
   /** Opens a folder as the workspace and remembers it for the next launch. */
   openWorkspace(folder: string): Promise<Result<WorkspaceService>>;
   language: LanguageServerManager;
+  /** The ORIGIN connection; every call answers NOT_CONNECTED when the origin-core feature is off. */
+  origin: {
+    connection(): OriginConnectionState;
+    connect(secret: string): Promise<Result<OriginIdentity>>;
+    disconnect(): Promise<Result<void>>;
+    refresh(): Promise<Result<OriginConnectionState>>;
+  };
   confirmClose(allow: boolean): void;
   log(message: string): void;
 }
@@ -241,6 +251,13 @@ export function registerIpc(context: IpcContext): void {
         return language.diagnostics(request.path);
     }
   });
+
+  /* ---------- ORIGIN connection ---------- */
+
+  handle(IpcChannel.OriginConnection, parseNoArgs, () => ok(context.origin.connection()));
+  handle(IpcChannel.OriginConnect, parseSecret, (secret) => context.origin.connect(secret));
+  handle(IpcChannel.OriginDisconnect, parseNoArgs, () => context.origin.disconnect());
+  handle(IpcChannel.OriginRefresh, parseNoArgs, () => context.origin.refresh());
 }
 
 /** The Recycle Bin / Trash, used for every delete. */

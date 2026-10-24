@@ -4,4 +4,4 @@ export * from "./terminal.js";
 export * from "./language.js";
 export * from "./host.js";
 export * from "./ipc.js";
-export type * from "./origin/index.js";
+export * from "./origin/index.js";

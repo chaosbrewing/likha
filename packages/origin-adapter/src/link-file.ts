@@ -1,23 +1,25 @@
 import {
+  ORIGIN_CORE_CONTRACT_VERSION,
   fail,
   ok,
   type IntegrationStatus,
   type OriginCoreAdapter,
-  type OriginPermission,
+  type OriginCredential,
   type OriginProjectId,
-  type OriginProjectRecord,
+  type OriginProjectLink,
+  type OriginProjectResolution,
+  type OriginTransport,
   type Result,
   type SyncState
 } from "@studio/contracts";
 
 /**
  * Workspace-relative location of the link file, with "/" separators. A folder
- * is linked to an ORIGIN project when this file holds a valid record.
+ * is linked to an ORIGIN project when this file names one.
  */
 export const ORIGIN_LINK_FILE = ".origin/project.json";
 
 const PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const PERMISSIONS: readonly OriginPermission[] = ["read", "write", "admin"];
 const MAX_NAME_LENGTH = 200;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -25,11 +27,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Validates the content of a link file. Strict on purpose: anything the IDE
- * would later act on (id, permissions, revision) must be well-formed, and an
- * unreadable link is reported, never guessed.
+ * Validates a link file. Only `projectId` is required; `name` is an optional
+ * display hint. Phase 6 files that also carried ownerId, permissions and
+ * revision are accepted, but those fields are ignored: ORIGIN is the source of
+ * truth for them, and the IDE never copies them back.
  */
-export function parseOriginLink(text: string): Result<OriginProjectRecord> {
+export function parseOriginLink(text: string): Result<OriginProjectLink> {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -40,38 +43,18 @@ export function parseOriginLink(text: string): Result<OriginProjectRecord> {
   if (!isRecord(raw)) {
     return fail("INVALID_ARGUMENT", `${ORIGIN_LINK_FILE} must contain a JSON object.`);
   }
-  const problems: string[] = [];
-  const { projectId, name, ownerId, permissions, revision } = raw;
+  const { projectId, name } = raw;
   if (typeof projectId !== "string" || !PROJECT_ID.test(projectId)) {
-    problems.push('"projectId" must be a short identifier (letters, numbers, ".", "_", ":" and "-").');
+    return fail("INVALID_ARGUMENT", `${ORIGIN_LINK_FILE} is invalid: "projectId" must be a short identifier (letters, numbers, ".", "_", ":" and "-").`);
   }
-  if (typeof name !== "string" || name.trim().length === 0 || name.length > MAX_NAME_LENGTH) {
-    problems.push(`"name" must be text of at most ${MAX_NAME_LENGTH} characters.`);
-  }
-  if (typeof ownerId !== "string" || ownerId.length === 0 || ownerId.length > MAX_NAME_LENGTH) {
-    problems.push('"ownerId" must be text.');
-  }
-  let parsedPermissions: OriginPermission[] = ["read"];
-  if (permissions !== undefined) {
-    if (!Array.isArray(permissions) || !permissions.every((p) => PERMISSIONS.includes(p as OriginPermission))) {
-      problems.push('"permissions" must be a list of "read", "write" or "admin".');
-    } else {
-      parsedPermissions = [...new Set(permissions as OriginPermission[])];
+  let nameHint: string | null = null;
+  if (name !== undefined) {
+    if (typeof name !== "string" || name.length > MAX_NAME_LENGTH) {
+      return fail("INVALID_ARGUMENT", `${ORIGIN_LINK_FILE} is invalid: "name" must be text of at most ${MAX_NAME_LENGTH} characters.`);
     }
+    nameHint = name.trim() || null;
   }
-  if (typeof revision !== "number" || !Number.isInteger(revision) || revision < 0 || revision > Number.MAX_SAFE_INTEGER) {
-    problems.push('"revision" must be a whole number of 0 or more.');
-  }
-  if (problems.length > 0) {
-    return fail("INVALID_ARGUMENT", `${ORIGIN_LINK_FILE} is invalid: ${problems.join(" ")}`);
-  }
-  return ok({
-    id: projectId as OriginProjectId,
-    name: (name as string).trim(),
-    ownerId: ownerId as string,
-    permissions: parsedPermissions,
-    revision: revision as number
-  });
+  return ok({ projectId: projectId as OriginProjectId, nameHint });
 }
 
 export interface LinkFileAdapterOptions {
@@ -81,23 +64,33 @@ export interface LinkFileAdapterOptions {
    * and so the host can apply its usual path confinement.
    */
   readWorkspaceFile(workspaceRoot: string, relativePath: string): Promise<string | null>;
+  /** Where project records come from. */
+  transport: OriginTransport;
+  now?: () => Date;
 }
 
-export const LINK_FILE_DETAIL = `ORIGIN Core (link file). Reads the project link from ${ORIGIN_LINK_FILE} in the workspace; read-only, no ORIGIN server connection yet.`;
-
 /**
- * The first ORIGIN Core adapter: a folder is linked to an ORIGIN project by a
- * link file that ORIGIN (or a developer) places in it. The adapter only reads.
- * A real transport will replace the file lookup with an ORIGIN query while
- * keeping this contract, so the wiring in the IDE does not change.
+ * ORIGIN Core v2: the link file names the project, ORIGIN (through the
+ * transport) confirms it. Read-only: nothing is written to ORIGIN or the file.
  */
 export function createLinkFileCoreAdapter(options: LinkFileAdapterOptions): OriginCoreAdapter {
-  const links = new Map<string, OriginProjectRecord>();
+  const now = options.now ?? (() => new Date());
+  const verified = new Map<string, number>();
   return {
     status(): IntegrationStatus {
-      return { system: "origin-core", connected: true, detail: LINK_FILE_DETAIL };
+      const transport = options.transport.kind;
+      return {
+        system: "origin-core",
+        connected: transport !== "none",
+        transport,
+        contractVersion: ORIGIN_CORE_CONTRACT_VERSION,
+        detail:
+          transport === "none"
+            ? `Reads the project link from ${ORIGIN_LINK_FILE}; no ORIGIN server is configured, so links stay unverified.`
+            : `Reads the project link from ${ORIGIN_LINK_FILE} and verifies it with ORIGIN (${transport}: ${options.transport.target}). Read-only.`
+      };
     },
-    async findLinkedProject(workspaceRoot: string): Promise<Result<OriginProjectRecord | null>> {
+    async findLink(workspaceRoot: string): Promise<Result<OriginProjectLink | null>> {
       let text: string | null;
       try {
         text = await options.readWorkspaceFile(workspaceRoot, ORIGIN_LINK_FILE);
@@ -105,22 +98,38 @@ export function createLinkFileCoreAdapter(options: LinkFileAdapterOptions): Orig
         const detail = error instanceof Error ? error.message : String(error);
         return fail("UNKNOWN", `Could not read ${ORIGIN_LINK_FILE}: ${detail}`);
       }
-      if (text === null) {
-        return ok(null);
+      return text === null ? ok(null) : parseOriginLink(text);
+    },
+    async resolveProject(link: OriginProjectLink, credential: OriginCredential | null): Promise<Result<OriginProjectResolution>> {
+      if (options.transport.kind === "none") {
+        return ok({ status: "unverified", reason: "disconnected", detail: "No ORIGIN server is configured; the link cannot be verified." });
       }
-      const parsed = parseOriginLink(text);
-      if (parsed.ok) {
-        links.set(parsed.value.id, parsed.value);
+      if (!credential) {
+        return ok({ status: "unverified", reason: "disconnected", detail: "Connect to ORIGIN to verify this link." });
       }
-      return parsed;
+      const result = await options.transport.getProject(credential, link.projectId);
+      if (result.ok) {
+        verified.set(link.projectId, result.value.revision);
+        return ok({ status: "verified", project: result.value, verifiedAt: now().toISOString() });
+      }
+      switch (result.error.code) {
+        case "FORBIDDEN":
+          return ok({ status: "unauthorized", reason: "forbidden", detail: result.error.message });
+        case "NOT_FOUND":
+          return ok({ status: "unauthorized", reason: "not-found", detail: result.error.message });
+        case "UNAUTHORIZED":
+          return ok({ status: "unauthorized", reason: "credential", detail: result.error.message });
+        default:
+          return ok({ status: "unverified", reason: "unavailable", detail: result.error.message });
+      }
     },
     async syncState(projectId: OriginProjectId): Promise<Result<SyncState>> {
-      const record = links.get(projectId);
-      if (!record) {
-        return fail("NOT_FOUND", "That ORIGIN project is not linked to an open workspace.");
+      const revision = verified.get(projectId);
+      if (revision === undefined) {
+        return fail("NOT_FOUND", "That ORIGIN project has not been verified in this session.");
       }
-      // With no server to compare against, the revision in the link is the known state.
-      return ok({ phase: "linked", revision: record.revision });
+      // Phase 7 is read-only: the verified revision is the known state; nothing is synchronised.
+      return ok({ phase: "linked", revision });
     }
   };
 }

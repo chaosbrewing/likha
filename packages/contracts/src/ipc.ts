@@ -33,7 +33,13 @@ export const IpcChannel = {
   LanguageClose: "language:close",
   LanguageRequest: "language:request",
   LanguageStatusChanged: "language:status-changed",
-  LanguageProblems: "language:problems"
+  LanguageProblems: "language:problems",
+
+  OriginConnection: "origin:connection",
+  OriginConnect: "origin:connect",
+  OriginDisconnect: "origin:disconnect",
+  OriginRefresh: "origin:refresh",
+  OriginConnectionChanged: "origin:connection-changed"
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];

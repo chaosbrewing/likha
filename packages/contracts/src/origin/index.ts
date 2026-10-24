@@ -1,20 +1,27 @@
 /*
- * Future ORIGIN integration boundaries. Nothing here is connected yet: these
- * interfaces define what Origin Studio expects from each ORIGIN system so the
- * IDE can be wired to them later without reshaping its local workflow.
- * See docs/integration/README.md.
+ * ORIGIN integration boundaries. Phase 7 adds a connection lifecycle and
+ * versioned sector contracts; what is real and what is mocked is recorded in
+ * docs/integration/README.md. The IDE's local workflow never depends on any
+ * of this.
  */
 import type { Result } from "../result.js";
 import type { RelativePath } from "../workspace.js";
+import type { OriginCredential, OriginProjectLink, OriginProjectResolution, OriginTransportKind } from "./connection.js";
+
+export * from "./connection.js";
+export * from "./services.js";
 
 export interface IntegrationStatus {
-  system: "origin-core" | "binhi" | "tala" | "agos" | "liyab";
+  system: "origin-core" | "binhi" | "tala" | "agos" | "liyab" | "pocket";
   connected: boolean;
   /** Human-readable explanation, e.g. why it is offline. */
   detail: string;
+  /** What the adapter talks to. Mocks say so; nothing pretends to be real. */
+  transport: OriginTransportKind;
+  contractVersion: number;
 }
 
-interface IntegrationAdapter {
+export interface IntegrationAdapter {
   status(): IntegrationStatus;
 }
 
@@ -29,7 +36,7 @@ export interface OriginProjectRecord {
   id: OriginProjectId;
   name: string;
   ownerId: string;
-  /** Permissions the signed-in user holds on this project. */
+  /** Permissions the connected credential holds on this project. */
   permissions: OriginPermission[];
   /** Monotonic revision of ORIGIN's structured project state. */
   revision: number;
@@ -41,29 +48,22 @@ export type SyncState =
   | { phase: "syncing"; fromRevision: number }
   | { phase: "conflict"; localRevision: number; remoteRevision: number };
 
+export const ORIGIN_CORE_CONTRACT_VERSION = 2 as const;
+
+/**
+ * ORIGIN Core, version 2: the link file names a project; ORIGIN (through the
+ * connection) is the only source of its metadata and of whether the
+ * credential may read it. Nothing here writes to ORIGIN or to the workspace.
+ */
 export interface OriginCoreAdapter extends IntegrationAdapter {
-  /** Looks up the ORIGIN project linked to a local workspace, if any. */
-  findLinkedProject(workspaceRoot: string): Promise<Result<OriginProjectRecord | null>>;
+  /** Reads the workspace's link file, if any. INVALID_ARGUMENT when it is malformed. */
+  findLink(workspaceRoot: string): Promise<Result<OriginProjectLink | null>>;
+  /** Asks ORIGIN about the linked project with the given credential (null when not connected). */
+  resolveProject(link: OriginProjectLink, credential: OriginCredential | null): Promise<Result<OriginProjectResolution>>;
   syncState(projectId: OriginProjectId): Promise<Result<SyncState>>;
 }
 
-/* ---------- Binhi: website project import / export ---------- */
-
-export interface BinhiExportManifest {
-  projectId: OriginProjectId;
-  /** Files Binhi generated and Origin Studio may edit as ordinary source. */
-  editableFiles: RelativePath[];
-  /** Structured intent Binhi needs back unchanged (page model, design tokens). */
-  intentFiles: RelativePath[];
-}
-
-export interface BinhiAdapter extends IntegrationAdapter {
-  importSite(projectId: OriginProjectId, targetRoot: string): Promise<Result<BinhiExportManifest>>;
-  /** Returns edited source to Binhi; intent files must be preserved. */
-  exportSite(manifest: BinhiExportManifest, workspaceRoot: string): Promise<Result<void>>;
-}
-
-/* ---------- Tala: authorized intelligence with approval and audit ---------- */
+/* ---------- Tala, phase 6 proposal contract (kept; tested) ---------- */
 
 export interface ProposedEdit {
   id: string;
@@ -84,7 +84,7 @@ export interface AuditRecord {
   path: RelativePath;
 }
 
-export interface TalaAdapter extends IntegrationAdapter {
+export interface TalaProposalAdapter extends IntegrationAdapter {
   /** Tala may only propose. Applying is a separate, user-approved step. */
   propose(request: { path: RelativePath; instruction: string }): Promise<Result<ProposedEdit>>;
   decide(proposalId: string, decision: ProposalDecision): Promise<Result<void>>;
@@ -93,37 +93,12 @@ export interface TalaAdapter extends IntegrationAdapter {
   auditLog(): Promise<Result<AuditRecord[]>>;
 }
 
-/* ---------- Agos: development workflow events and tasks ---------- */
+/* ---------- Agos and Liyab, phase 6 event contract (kept) ---------- */
 
 export type WorkflowEvent =
   | { type: "file-saved"; path: RelativePath }
   | { type: "workspace-opened"; root: string }
   | { type: "command-finished"; command: string; exitCode: number };
-
-export interface WorkflowTask {
-  id: string;
-  title: string;
-  trigger: WorkflowEvent["type"];
-  state: "pending" | "running" | "done" | "failed";
-}
-
-export interface AgosAdapter extends IntegrationAdapter {
-  publish(event: WorkflowEvent): Promise<Result<void>>;
-  tasks(): Promise<Result<WorkflowTask[]>>;
-}
-
-/* ---------- Liyab: build, runtime, preview and deployment handoff ---------- */
-
-export interface BuildCapability {
-  id: string;
-  label: string;
-}
-
-export interface PreviewSession {
-  id: string;
-  url: string;
-  startedAt: string;
-}
 
 export interface DeploymentHandoff {
   projectId: OriginProjectId;
@@ -132,17 +107,15 @@ export interface DeploymentHandoff {
   sourceRevision: string;
 }
 
-export interface LiyabAdapter extends IntegrationAdapter {
-  capabilities(): Promise<Result<BuildCapability[]>>;
-  startPreview(projectId: OriginProjectId): Promise<Result<PreviewSession>>;
-  logs(sessionId: string): Promise<Result<string[]>>;
-  handOffDeployment(request: DeploymentHandoff): Promise<Result<{ ticketId: string }>>;
-}
+/* ---------- The adapter set the host assembles ---------- */
+
+import type { AgosAdapterV1, BinhiAdapterV1, LiyabAdapterV1, OriginPocketAdapterV1, TalaAdapterV1 } from "./services.js";
 
 export interface OriginAdapters {
   core: OriginCoreAdapter;
-  binhi: BinhiAdapter;
-  tala: TalaAdapter;
-  agos: AgosAdapter;
-  liyab: LiyabAdapter;
+  binhi: BinhiAdapterV1 & IntegrationAdapter;
+  tala: TalaAdapterV1 & TalaProposalAdapter;
+  agos: AgosAdapterV1 & IntegrationAdapter & { publish(event: WorkflowEvent): Promise<Result<void>> };
+  liyab: LiyabAdapterV1 & IntegrationAdapter & { handOffDeployment(request: DeploymentHandoff): Promise<Result<{ ticketId: string }>> };
+  pocket: OriginPocketAdapterV1 & IntegrationAdapter;
 }

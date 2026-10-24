@@ -130,9 +130,10 @@ export class LanguageServerManager {
   }
 
   /**
-   * Ends the server without waiting, for quitting: tells it to exit and closes its
-   * input (it exits on end-of-input), and only kills it if it is still there a
-   * little later. Nothing here blocks the app's own shutdown.
+   * Ends the server without waiting, for quitting: tells it to exit, then ends
+   * the process at once. Nothing asynchronous is left pending, because a
+   * request still in flight when Electron tears down its event loop aborts the
+   * app (exit code 0xC0000409 on Windows).
    */
   terminate(): void {
     const session = this.session;
@@ -148,16 +149,8 @@ export class LanguageServerManager {
       connection.notify("exit");
     }
     connection.dispose("Origin Studio is closing.");
-    try {
-      child.stdin?.end();
-    } catch {
-      // Already closed.
-    }
+    if (alive()) child.kill();
     child.unref();
-    const fallback = setTimeout(() => {
-      if (alive()) child.kill();
-    }, 1500);
-    fallback.unref();
     this.currentStatus = { state: "off", detail: "Origin Studio is closing." };
   }
 

@@ -65,7 +65,7 @@ Changes under `apps/ide/electron` need a restart of `ide:dev`.
 | Safety | Saves are checked against the version on disk. If another program changed the file, you choose Overwrite, Reload from Disk or Cancel. Binary, non-UTF-8 and >5 MB files are not opened. Closing a tab or the app with unsaved changes asks first. Deletes ask first and go to the Recycle Bin. Names are validated (Windows-reserved names and characters are rejected), and create or rename never overwrites anything |
 | Terminal | Real shells through node-pty: PowerShell 7, Windows PowerShell and Command Prompt. Multiple sessions, resize and kill. Terminals open in the project folder. **Run** executes a `package.json` script (`npm run <name>`). All shells end when the app closes |
 | Panels | Terminal, Output (activity log) and Problems (diagnostics for the whole project, open or not; click one to jump to it) |
-| ORIGIN (preview) | Behind the `origin-core` feature flag: a folder is linked to an ORIGIN project through a read-only link file, and the status bar shows the link. See [Feature flags](#feature-flags) |
+| ORIGIN (preview) | Behind the `origin-core` feature flag: **ORIGIN > Connect to ORIGIN…** verifies an ORIGIN API key and stores it encrypted; a folder's `.origin/project.json` link is then verified against ORIGIN and the status bar shows the connection and the link. Read-only, and offline-safe. No ORIGIN server a desktop can reach exists yet, so builds run against a documented mock. See [Feature flags](#feature-flags) |
 | Updates | **Help > Check for Updates…** checks a release feed only when you ask, and only for builds packaged with one. See [Updates](#updates) |
 | Window | Size, position and maximized state are remembered and kept on a visible screen |
 
@@ -106,20 +106,43 @@ Work that is not part of the default experience yet is off unless you turn it on
 or set `ORIGIN_STUDIO_FEATURES=origin-core` (a comma-separated list) when starting the app.
 The log line `Starting Origin Studio …; features: …` shows what is on.
 
-**`origin-core`** — the first ORIGIN Core adapter. A folder is linked to an ORIGIN project
-when it contains `.origin/project.json`:
+**`origin-core`** — the ORIGIN connection and project link (Phase 7).
+
+*Connecting.* **ORIGIN > Connect to ORIGIN…** asks for an ORIGIN API key (64 hexadecimal
+characters, the format ORIGIN issues). The key is verified with ORIGIN first and only then
+stored, encrypted with your Windows user key, in `%AppData%\Origin Studio\origin-credential.bin`.
+It is never written to a project, never logged, and used for reads only. **Disconnect** forgets
+it; **Refresh ORIGIN Status** re-verifies it. A key ORIGIN rejects (invalid, expired, revoked) is
+forgotten at once and the status bar says why; when ORIGIN cannot be reached the status bar
+shows **unavailable**, the key is kept, and everything else keeps working.
+
+*Where ORIGIN is.* `%AppData%\Origin Studio\origin.json` names the transport:
 
 ```json
-{ "projectId": "proj_42", "name": "Binhi Site", "ownerId": "user_1", "permissions": ["read"], "revision": 7 }
+{ "transport": "mock" }
+{ "transport": "http", "baseUrl": "https://origin.example" }
 ```
 
-The status bar then shows **ORIGIN: <name>** (hover for the id and revision), **ORIGIN: not
-linked** without a link file, or **ORIGIN: link invalid** when the file cannot be read. The
-link is read-only: Origin Studio never writes to ORIGIN, never changes the link file, and
-needs no account or network for it. A link file that appears or changes while the folder is
-open is picked up at once. Without the flag the status bar shows **Local**, as before. The
-adapter contract and what a real ORIGIN transport must do are in
-[docs/integration/README.md](docs/integration/README.md).
+Without it, connecting is refused with "No ORIGIN server is configured". `mock` uses the
+fixtures in [docs/integration/README.md](docs/integration/README.md) and never touches the
+network; `http` targets ORIGIN's tRPC procedures but **cannot work against ORIGIN today**
+(ORIGIN authenticates browser sessions only and has no public deployment), which is recorded
+there as well.
+
+*Linking a folder.* A folder is linked to an ORIGIN project when it contains
+`.origin/project.json`:
+
+```json
+{ "projectId": "proj_42", "name": "optional display hint" }
+```
+
+The status bar shows the link next to the connection: **<name> ✓** once ORIGIN confirmed the
+project and your access, **<hint> (unverified)** while not connected or offline,
+**<id> (no access)** when ORIGIN refuses it, **not linked** without a file, and **link invalid**
+when the file cannot be read. Only the project id comes from the file; name, owner and
+permissions come from ORIGIN and are never copied back. A link file that appears or changes
+while the folder is open is picked up at once. Without the flag the status bar shows **Local**,
+as before.
 
 ### Updates
 
@@ -293,8 +316,9 @@ origin-studio/
 │   └── origin-adapter/       @studio/origin-adapter: offline ORIGIN adapters, the link-file ORIGIN Core adapter, test mocks
 ├── docs/
 │   ├── architecture.md
-│   ├── integration/README.md
-│   └── qa/                   acceptance test reports
+│   ├── integration/README.md ORIGIN: what is verified, mocked and real; contracts and fixtures
+│   ├── REMOTE_SETUP.md       GitHub remote and CI plan (not executed)
+│   └── qa/                   acceptance test reports and phase reports
 ├── .github/workflows/ci.yml  Windows CI: typecheck, unit tests, end-to-end, package, packaged smoke test
 ├── package.json              origin-studio (workspace root)
 └── tsconfig.json             typecheck config for packages, CLI and IDE host
@@ -378,11 +402,25 @@ General:
   scripts not approved with `npm approve-scripts`. None is needed here: esbuild ships its
   binary as a package, node-pty ships prebuilt Windows binaries, and electron-winstaller
   (a dependency of electron-builder) is not used because the installer is NSIS.
-- `npm audit` reported 0 vulnerabilities when Phase 6 was completed (2026-10-23). Earlier
+- `npm audit` reported 0 vulnerabilities when Phase 7 was completed (2026-10-24). Earlier
   phases saw moderate findings in `sprintf-js`, development tooling reached only through
   electron-builder's proxy support; nothing in the shipped app or the CLI depends on it.
 
-## Phase 6 (this milestone)
+## Phase 7 (this milestone)
+
+1. ORIGIN connection lifecycle: connect, disconnect, restore and refresh an ORIGIN API key,
+   stored encrypted with the OS user key, with honest unauthorized and unavailable states.
+2. ORIGIN Core v2: the project link names a project; ORIGIN's record is the only source of
+   truth for it, shown as verified, unverified or no access.
+3. Versioned sector contracts for BINHI, TALA, AGOS, LIYAB and Origin Pocket with documented
+   mock adapters; an HTTP transport written to ORIGIN's tRPC shapes, unverified live.
+4. The packaged app no longer crashes on close after a terminal was used (quit-time process
+   kills are synchronous).
+5. A GitHub remote and CI readiness plan ([docs/REMOTE_SETUP.md](docs/REMOTE_SETUP.md)); the
+   Phase 7 report with what is real, what is mocked and what blocks a live connection is in
+   [docs/qa/phase-7-report.md](docs/qa/phase-7-report.md).
+
+## Phase 6
 
 1. Project-wide TypeScript intelligence through the native TypeScript 7 language server, run
    by the host for the open workspace; the Problems view covers the whole project.
@@ -400,12 +438,13 @@ collaborative editing, debugger integration, ORIGIN account synchronization, and
 Binhi, Tala, Agos and Liyab connections. Their boundaries are defined in
 [docs/integration/README.md](docs/integration/README.md); none of them is connected.
 
-## Next milestone (Phase 7 recommendation)
+## Next milestone (Phase 8 recommendation)
 
-1. Obtain a publisher certificate, sign releases in CI, publish `latest.yml` and the installer
-   to a feed, and package with `ORIGIN_STUDIO_UPDATE_URL` and `ORIGIN_STUDIO_PUBLISHER_NAME`.
-2. Replace the link-file transport of the ORIGIN Core adapter with a real ORIGIN query
-   (credentials in the main process only), keeping the contract and the status bar as they are.
-3. Rename across files, quick fixes and organize imports from the language server, applied
-   through the save path so a file changed elsewhere is a conflict, not an overwrite.
-4. Tala proposals as diffs in the editor, using the approval and audit contract already tested.
+1. In ORIGIN: mount API-key authentication for the tRPC procedures a desktop client needs
+   (`auth.me`, `projects.get`) and publish a reachable deployment; then point `origin.json`
+   at it and run the existing connection tests live. Until then the connection stays mocked.
+2. Create the GitHub repository and push the phase branches per
+   [docs/REMOTE_SETUP.md](docs/REMOTE_SETUP.md), so CI runs on every change.
+3. Obtain a publisher certificate, sign releases in CI, and publish an update feed.
+4. Tala proposals as diffs in the editor through the tested approval contract; rename across
+   files, quick fixes and organize imports from the language server through the save path.

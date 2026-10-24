@@ -8,7 +8,7 @@
 | `@studio/core` | anywhere | Pure logic: project-name and file-name validation, project configuration checks, starter templates | — |
 | `@studio/workspace` | Node.js | Safe filesystem access for one workspace (`WorkspaceService`), project scaffolding (`scaffoldProject`, shared by `chaos init` and New Project), change watching (`watchWorkspace`), project inspection, Git branch, safe npm script names, source-file listing for project-wide checks | contracts, core |
 | `@studio/editor` | anywhere | Editor state independent of React, Monaco and Electron: open tabs, unsaved changes, disk versions, language mapping | contracts |
-| `@studio/origin-adapter` | anywhere | ORIGIN adapters: the offline set used by default, the link-file ORIGIN Core adapter (behind the `origin-core` flag), and test mocks | contracts |
+| `@studio/origin-adapter` | anywhere | ORIGIN adapters: the offline set used by default; the connection lifecycle (`OriginConnection`), the mock and HTTP transports, the link-file ORIGIN Core adapter v2 and the mock sector adapters (behind the `origin-core` flag) | contracts |
 | `@studio/cli` (`apps/cli`) | Node.js | The `chaos` command | core, workspace |
 | `@studio/ide` (`apps/ide`) | Electron | Desktop IDE: `electron/` (host) and `src/` (interface) | all of the above |
 
@@ -57,7 +57,7 @@ Rules:
 | Deletes | Require `confirmed === true` (sent only after a confirmation dialog) and go to the Recycle Bin via `shell.trashItem` |
 | Terminal | The interface picks a shell id from an allowlist (`pwsh`, `powershell`, `cmd`; `bash`/`zsh`/`sh` elsewhere); no executable path or arguments come from the interface. Commands only run when the user types them or clicks **Run** on a package script (names with shell metacharacters are not offered). All shells are ended when the window closes |
 | Language server | Started by the host from a fixed location with fixed arguments; the interface never names an executable. It only ever hears about documents the interface opened; server-internal completion data (which holds absolute paths) stays in the host and is referenced by token and index. Server requests to change files (`workspace/applyEdit`) are refused: edits only come from the user. The process is ended when the window closes |
-| ORIGIN | Off by default. With the `origin-core` flag the link file is read through `WorkspaceService` (same confinement as any file), validated strictly, and never written. No network |
+| ORIGIN | Off by default. With the `origin-core` flag: the credential is typed once in the interface, crosses IPC as one bounded line (`origin:connect`), is verified with ORIGIN before it is stored, and is stored encrypted with the OS user key (`safeStorage`) in the settings folder, never in a project. The interface only ever receives connection states (no secret), and the log never contains the key. A rejected key is forgotten; an unreachable ORIGIN keeps it. Every adapter call is a read. The link file is read through `WorkspaceService` (same confinement as any file), validated, and never written; ORIGIN's record, not the file, is the source of truth. The HTTP transport accepts https only (http for localhost) and sends the key as a bearer header, never in a URL |
 | Updates | Only on **Help > Check for Updates…**, only in the installed app, and only when a feed was baked in at packaging time (`ORIGIN_STUDIO_UPDATE_URL`, https). Download and install each need a confirmation; the install runs when the app quits, after the usual unsaved-changes guard |
 | Network | None by default. Monaco workers, fonts and grammars are bundled; no telemetry. The only network call Origin Studio can make is the update check the user asks for |
 
@@ -106,6 +106,28 @@ changed, and compares each open tab's `diskVersion` with the file on disk:
 
 A save in progress is never treated as an external change.
 
+## ORIGIN connection
+
+With the `origin-core` flag, `setUpOrigin` in `main.ts` assembles: the transport named in
+`origin.json` (`mock`, `http`, or `none`), the credential vault (`origin-vault.ts`), one
+`OriginConnection` (`@studio/origin-adapter`) and the adapter set (ORIGIN Core v2 over the
+transport; mock sector adapters). The connection restores a stored credential in the
+background at start-up; every state change is pushed to the interface over
+`origin:connection-changed`, which re-reads the workspace description so the link's
+verification follows the connection. Menu commands `origin-connect`, `origin-disconnect` and
+`origin-refresh` are handled by the interface (prompt, confirmation) and call the host's
+`origin:*` channels. Details, states, fixtures and what was verified about ORIGIN are in
+[integration/README.md](integration/README.md).
+
+## Shutdown
+
+Quitting must leave nothing asynchronous in flight: a child-process request still pending
+when Electron tears down its event loop aborts the process (Windows exit code 0xC0000409, seen
+in about half of the closes after a terminal had been used). `TerminalManager.killAll({ wait:
+true })` therefore runs `taskkill` synchronously, and `LanguageServerManager.terminate()` ends
+the server process at once instead of scheduling a kill. Normal terminal tab closes keep the
+asynchronous path.
+
 ## Feature flags
 
 `apps/ide/electron/features.ts` reads `%AppData%\Origin Studio\features.json` (an object of
@@ -134,7 +156,7 @@ That test also checks that the shipped language server starts under the fuses.
 
 ## Persistence
 
-`%AppData%\Origin Studio\app-state.json` stores window bounds/maximized state and the last workspace folder (validated against current displays on start). `features.json` in the same folder holds feature flags. Logs are in `%AppData%\Origin Studio\logs\main.log`.
+`%AppData%\Origin Studio\app-state.json` stores window bounds/maximized state and the last workspace folder (validated against current displays on start). `features.json` in the same folder holds feature flags, `origin.json` the ORIGIN transport, and `origin-credential.bin` the encrypted ORIGIN credential (present only while connected). Logs are in `%AppData%\Origin Studio\logs\main.log`.
 
 ## Continuous integration
 

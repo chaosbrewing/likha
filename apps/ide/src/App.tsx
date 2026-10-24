@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { RelativePath, StudioHostApi, WorkspaceInfo } from "@studio/contracts";
+import { ORIGIN_API_KEY_PATTERN, type OriginConnectionState, type RelativePath, type StudioHostApi, type WorkspaceInfo } from "@studio/contracts";
 import { validateEntryName, validateProjectName } from "@studio/core";
 import { activeDocument, dirtyDocuments, isDirty, isSameOrInside, languageLabel } from "@studio/editor";
 import { BottomPanel, type OutputEntry, type PanelTab, type Problem } from "./components/BottomPanel";
@@ -40,6 +40,7 @@ export function App({ host }: { host: StudioHostApi }) {
   const [panelHeight, setPanelHeight] = useState(260);
   const [cursor, setCursor] = useState<{ line: number; column: number } | null>(null);
   const [problems, setProblems] = useState<Problem[]>([]);
+  const [originConnection, setOriginConnection] = useState<OriginConnectionState | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const terminalApi = useRef<TerminalPanelApi | null>(null);
 
@@ -89,6 +90,70 @@ export function App({ host }: { host: StudioHostApi }) {
     const result = await host.workspace.refreshInfo();
     if (result.ok) setWorkspace(result.value);
   }, [host]);
+
+  /* ---------- ORIGIN connection (origin-core feature) ---------- */
+
+  useEffect(() => {
+    let active = true;
+    void host.origin.connection().then((result) => {
+      // "off" leaves the status bar at "Local"; any other answer means the feature is on.
+      if (active && result.ok && !(result.value.state === "disconnected" && /feature is off/.test(result.value.detail))) setOriginConnection(result.value);
+    });
+    const unsubscribe = host.origin.onConnectionChanged((state) => {
+      setOriginConnection(state);
+      log("info", state.state === "connected" ? `Connected to ORIGIN as ${state.identity.displayName}` : `ORIGIN: ${state.state}${"detail" in state ? ` (${state.detail})` : ""}`);
+      void refreshInfo();
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [host, log, refreshInfo]);
+
+  const originConnect = useCallback(async () => {
+    const secret = await dialogs.prompt({
+      title: "Connect to ORIGIN",
+      label: "ORIGIN API key (64 hexadecimal characters). It is verified with ORIGIN, then stored encrypted on this computer. Origin Studio only reads from ORIGIN.",
+      initialValue: "",
+      confirmLabel: "Connect",
+      secret: true,
+      validate: (value) => (ORIGIN_API_KEY_PATTERN.test(value.trim()) ? null : "An ORIGIN API key is 64 hexadecimal characters.")
+    });
+    if (secret === null) return;
+    const result = await host.origin.connect(secret);
+    if (!result.ok) {
+      log("error", `Could not connect to ORIGIN: ${result.error.message}`);
+      await dialogs.notify("Could not connect to ORIGIN", result.error.message, result.error.code === "NOT_CONNECTED" ? "Configure an ORIGIN server in origin.json (see the README) before connecting." : undefined);
+      return;
+    }
+    await refreshInfo();
+  }, [dialogs, host, log, refreshInfo]);
+
+  const originDisconnect = useCallback(async () => {
+    const choice = await dialogs.choose({
+      title: "Disconnect from ORIGIN",
+      message: "Forget the stored ORIGIN credential on this computer?",
+      detail: "Linked projects show as unverified until you connect again. The key itself stays valid in ORIGIN; revoke it there if it should stop working.",
+      buttons: [
+        { id: "disconnect", label: "Disconnect", variant: "danger" },
+        { id: "cancel", label: "Cancel", variant: "primary" }
+      ],
+      cancelId: "cancel"
+    });
+    if (choice !== "disconnect") return;
+    const result = await host.origin.disconnect();
+    if (!result.ok) await dialogs.notify("Could not disconnect", result.error.message);
+    await refreshInfo();
+  }, [dialogs, host, refreshInfo]);
+
+  const originRefresh = useCallback(async () => {
+    const result = await host.origin.refresh();
+    if (!result.ok) {
+      await dialogs.notify("ORIGIN", result.error.message);
+      return;
+    }
+    await refreshInfo();
+  }, [dialogs, host, refreshInfo]);
 
   useEffect(() => {
     void host.workspace.current().then((result) => {
@@ -355,6 +420,12 @@ export function App({ host }: { host: StudioHostApi }) {
           editorRef.current?.focus();
           await editorRef.current?.getAction("actions.find")?.run();
           return;
+        case "origin-connect":
+          return originConnect();
+        case "origin-disconnect":
+          return originDisconnect();
+        case "origin-refresh":
+          return originRefresh();
         case "about": {
           const info = await host.app.info();
           await dialogs.notify(
@@ -366,7 +437,7 @@ export function App({ host }: { host: StudioHostApi }) {
         }
       }
     },
-    [createEntry, dialogs, documents, explorer, host, newProject, openFolder, refreshInfo, showTerminal]
+    [createEntry, dialogs, documents, explorer, host, newProject, openFolder, originConnect, originDisconnect, originRefresh, refreshInfo, showTerminal]
   );
 
   const commandRef = useRef(runCommand);
@@ -562,6 +633,7 @@ export function App({ host }: { host: StudioHostApi }) {
         dirtyCount={dirtyPaths.size}
         message={status}
         languageServer={languageService.status}
+        originConnection={originConnection}
       />
       {dialogs.element}
     </div>

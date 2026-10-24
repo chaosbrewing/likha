@@ -12,6 +12,7 @@ import type {
   TextChange,
   TextPosition
 } from "./language.js";
+import type { OriginConnectionState, OriginIdentity } from "./origin/index.js";
 import type { Result } from "./result.js";
 import type {
   ShellInfo,
@@ -45,7 +46,10 @@ export const MENU_COMMANDS = [
   "toggle-panel",
   "new-terminal",
   "find",
-  "about"
+  "about",
+  "origin-connect",
+  "origin-disconnect",
+  "origin-refresh"
 ] as const;
 
 export type MenuCommand = (typeof MENU_COMMANDS)[number];
@@ -125,5 +129,20 @@ export interface StudioHostApi {
     diagnostics(path: RelativePath): Promise<Result<Diagnostic[]>>;
     onStatus(listener: (status: LanguageServerStatus) => void): Unsubscribe;
     onProblems(listener: (event: ProjectProblemsEvent) => void): Unsubscribe;
+  };
+  /**
+   * The ORIGIN connection (origin-core feature). The host keeps the credential;
+   * the interface passes it once, when the user types it, and otherwise only
+   * sees connection states. Off means every call answers NOT_CONNECTED.
+   */
+  origin: {
+    connection(): Promise<Result<OriginConnectionState>>;
+    /** Verifies the credential with ORIGIN and, only then, stores it. */
+    connect(secret: string): Promise<Result<OriginIdentity>>;
+    /** Forgets the stored credential. */
+    disconnect(): Promise<Result<void>>;
+    /** Re-verifies the stored credential (after going offline, or to pick up a revocation). */
+    refresh(): Promise<Result<OriginConnectionState>>;
+    onConnectionChanged(listener: (state: OriginConnectionState) => void): Unsubscribe;
   };
 }

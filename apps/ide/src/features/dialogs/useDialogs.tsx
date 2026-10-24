@@ -25,6 +25,8 @@ interface PromptRequest {
   confirmLabel: string;
   /** Returns an error message, or null when the value is acceptable. */
   validate: (value: string) => string | null;
+  /** Masks the input (credentials). */
+  secret?: boolean;
   resolve: (value: string | null) => void;
 }
 
@@ -156,6 +158,8 @@ function DialogView({ request, onDone }: { request: DialogRequest; onDone: () =>
             <label className="dialog-label">
               {request.label}
               <input
+                type={request.secret ? "password" : "text"}
+                autoComplete={request.secret ? "off" : undefined}
                 value={value}
                 onChange={(event) => setValue(event.target.value)}
                 aria-invalid={error !== null}
