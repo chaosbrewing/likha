@@ -8,7 +8,7 @@
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -98,7 +98,8 @@ test("the packaged executable starts, opens a project, edits a file and runs a s
     await page.evaluate(() => window.close());
     assert.equal(await exited, 0);
     const state = JSON.parse(readFileSync(path.join(userData, "app-state.json"), "utf8"));
-    assert.equal(path.resolve(state.lastWorkspace), path.resolve(workspace));
+    // realpath: the runner's temp folder can be spelled with an 8.3 short name (RUNNER~1) or the long one.
+    assert.equal(realpathSync.native(state.lastWorkspace), realpathSync.native(workspace));
   } finally {
     await browser.close().catch(() => undefined);
   }
