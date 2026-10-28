@@ -1,8 +1,8 @@
-/** Key inside a project's package.json that marks it as an Origin Studio project. */
+/** Key inside a project's package.json that marks it as a LIKHA project. */
 export const PROJECT_CONFIG_KEY = "originStudio";
 export const PROJECT_SCHEMA_VERSION = 1;
 
-/** Files every Origin Studio project is expected to contain. */
+/** Files every LIKHA project is expected to contain. */
 export const REQUIRED_PROJECT_FILES = [
   "package.json",
   "tsconfig.json",
@@ -25,8 +25,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Validates parsed package.json content. Returns "none" when the manifest has
- * no Origin Studio section, so ordinary Node.js projects are not reported as
- * broken Origin Studio projects.
+ * no LIKHA section, so ordinary Node.js projects are not reported as
+ * broken LIKHA projects.
  */
 export function checkProjectManifest(manifest: unknown): ProjectConfigCheck {
   if (!isRecord(manifest)) {

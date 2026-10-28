@@ -18,6 +18,7 @@ import {
   type WorkspaceInfo
 } from "@studio/contracts";
 import { OriginConnection, createLinkFileCoreAdapter, createMockSectorAdapters, createOfflineAdapters } from "@studio/origin-adapter";
+import { resolveUserDataDir } from "./user-data.js";
 import { NONE_ORIGIN_TRANSPORT, createOriginTransport, loadOriginConfig, type OriginConfig } from "./origin-config.js";
 import { createSafeStorageVault } from "./origin-vault.js";
 import { WorkspaceService, listSourceFiles, watchWorkspace, type WorkspaceWatcher } from "@studio/workspace";
@@ -38,11 +39,10 @@ const require = createRequire(import.meta.url);
 const devServerUrl = parseDevServerUrl(process.env.ORIGIN_STUDIO_DEV_SERVER_URL);
 const isDev = devServerUrl !== null;
 
-app.setName("Origin Studio");
-if (process.env.ORIGIN_STUDIO_USER_DATA) {
-  // Lets automated tests run with isolated settings.
-  app.setPath("userData", path.resolve(process.env.ORIGIN_STUDIO_USER_DATA));
-}
+app.setName("LIKHA");
+// ORIGIN_STUDIO_USER_DATA lets automated tests run with isolated settings; otherwise the
+// settings folder keeps its pre-rename name so existing settings and credentials survive.
+app.setPath("userData", resolveUserDataDir(app.getPath("appData"), process.env));
 app.enableSandbox();
 registerAppScheme();
 
@@ -68,7 +68,7 @@ function log(message: string): void {
 
 process.on("uncaughtException", (error) => {
   log(`Uncaught exception: ${error.stack ?? error.message}`);
-  dialog.showErrorBox("Origin Studio encountered an error", `${error.message}\n\nDetails were written to the log in ${app.getPath("userData")}.`);
+  dialog.showErrorBox("LIKHA encountered an error", `${error.message}\n\nDetails were written to the log in ${app.getPath("userData")}.`);
 });
 process.on("unhandledRejection", (reason) => {
   log(`Unhandled rejection: ${reason instanceof Error ? reason.stack : String(reason)}`);
@@ -245,7 +245,7 @@ async function openWorkspace(folder: string): Promise<Result<WorkspaceService>> 
     );
     appState.lastWorkspace = workspace.root;
     persistState();
-    mainWindow?.setTitle(`${path.basename(workspace.root)} - Origin Studio`);
+    mainWindow?.setTitle(`${path.basename(workspace.root)} - LIKHA`);
     log(`Opened workspace ${workspace.root}`);
     const state = await describeOrigin(workspace);
     if (workspace === opened.value) {
@@ -305,7 +305,7 @@ async function runUpdateCheck(): Promise<void> {
         }
       },
       ask: async (options) => {
-        const result = await dialog.showMessageBox(mainWindow ?? undefined!, { title: "Origin Studio", noLink: true, ...options });
+        const result = await dialog.showMessageBox(mainWindow ?? undefined!, { title: "LIKHA", noLink: true, ...options });
         return result.response;
       },
       requestClose: () => mainWindow?.close(),
@@ -325,7 +325,7 @@ function createWindow(): BrowserWindow {
     minWidth: 640,
     minHeight: 400,
     show: false,
-    title: "Origin Studio",
+    title: "LIKHA",
     icon: path.join(here, "icon.png"),
     backgroundColor: "#1b1d23",
     webPreferences: {
@@ -367,7 +367,7 @@ function createWindow(): BrowserWindow {
     closeAllowed = true; // Nothing left to ask; never trap the user.
     const choice = await dialog.showMessageBox(win, {
       type: "error",
-      title: "Origin Studio",
+      title: "LIKHA",
       message: "The editor window stopped unexpectedly.",
       detail: "Files saved before this point are safe on disk. Unsaved changes in open tabs may be lost.",
       buttons: ["Reload", "Close"],
@@ -383,7 +383,7 @@ function createWindow(): BrowserWindow {
   win.webContents.on("did-finish-load", () => log(`Interface loaded from ${win.webContents.getURL()}`));
   win.webContents.on("did-fail-load", (_event, code, description, url) => {
     log(`Failed to load ${url}: ${code} ${description}`);
-    dialog.showErrorBox("Origin Studio could not start", `The interface failed to load (${description}).${isDev ? " Is the dev server running?" : " Try running npm run build again."}`);
+    dialog.showErrorBox("LIKHA could not start", `The interface failed to load (${description}).${isDev ? " Is the dev server running?" : " Try running npm run build again."}`);
   });
 
   void win.loadURL(isDev ? `${devServerUrl}/` : `${APP_ORIGIN}/index.html`);
@@ -435,11 +435,11 @@ if (!app.requestSingleInstanceLock()) {
     const shells = detectShells();
     const enabled = enabledFeatureNames(features);
     log(
-      `Starting Origin Studio ${app.getVersion()} (${isDev ? "development" : "production"}); shells: ${shells.map((s) => s.id).join(", ") || "none"}; features: ${enabled.join(", ") || "none"}`
+      `Starting LIKHA ${app.getVersion()} (${isDev ? "development" : "production"}); shells: ${shells.map((s) => s.id).join(", ") || "none"}; features: ${enabled.join(", ") || "none"}`
     );
 
     const appInfo: AppInfo = {
-      productName: "Origin Studio",
+      productName: "LIKHA",
       version: app.getVersion(),
       platform: process.platform,
       versions: {
@@ -482,7 +482,7 @@ if (!app.requestSingleInstanceLock()) {
 
     mainWindow = createWindow();
     if (workspace) {
-      mainWindow.setTitle(`${path.basename(workspace.root)} - Origin Studio`);
+      mainWindow.setTitle(`${path.basename(workspace.root)} - LIKHA`);
     }
     Menu.setApplicationMenu(
       buildMenu((command: MenuCommand) => send(IpcChannel.MenuCommand, command), {

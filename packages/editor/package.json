@@ -2,7 +2,7 @@
   "name": "@studio/editor",
   "version": "0.1.0",
   "private": true,
-  "description": "Framework- and host-independent editor state for Origin Studio: tabs, unsaved changes, languages.",
+  "description": "Framework- and host-independent editor state for LIKHA: tabs, unsaved changes, languages.",
   "type": "module",
   "exports": {
     ".": {

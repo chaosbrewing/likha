@@ -106,7 +106,7 @@ export function StatusBar({ workspace, language, cursor, dirtyCount, message, la
   const project = workspace?.project;
   const projectLabel =
     project?.state === "valid"
-      ? "Origin Studio project"
+      ? "LIKHA project"
       : project?.state === "invalid"
         ? "Project configuration invalid"
         : workspace

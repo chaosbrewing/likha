@@ -99,7 +99,7 @@ export class TerminalManager {
         env[key] = value;
       }
     }
-    env.TERM_PROGRAM = "OriginStudio";
+    env.TERM_PROGRAM = "LIKHA";
 
     let pty: PtyProcess;
     try {

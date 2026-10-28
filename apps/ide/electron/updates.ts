@@ -31,9 +31,9 @@ export interface UpdateCheckerDeps {
 export type UpdateOutcome = "unsupported" | "not-configured" | "failed" | "up-to-date" | "declined" | "downloaded" | "installing";
 
 export const UPDATE_MESSAGES = {
-  unsupported: "Updates are available in the installed version of Origin Studio only.",
-  notConfigured: "This build of Origin Studio has no update feed configured.",
-  upToDate: (version: string) => `Origin Studio ${version} is the latest version.`
+  unsupported: "Updates are available in the installed version of LIKHA only.",
+  notConfigured: "This build of LIKHA has no update feed configured.",
+  upToDate: (version: string) => `LIKHA ${version} is the latest version.`
 };
 
 function looksUnconfigured(error: unknown): boolean {
@@ -95,7 +95,7 @@ export async function checkForUpdates(deps: UpdateCheckerDeps): Promise<UpdateOu
     await deps.ask({
       type: "error",
       message: "Could not check for updates.",
-      detail: `${detail}\n\nOrigin Studio keeps working; try again later.`,
+      detail: `${detail}\n\nLIKHA keeps working; try again later.`,
       buttons: ["OK"],
       defaultId: 0,
       cancelId: 0
@@ -110,7 +110,7 @@ export async function checkForUpdates(deps: UpdateCheckerDeps): Promise<UpdateOu
 
   const download = await deps.ask({
     type: "question",
-    message: `Origin Studio ${available.version} is available.`,
+    message: `LIKHA ${available.version} is available.`,
     detail: `You have ${deps.currentVersion}. Download it now? Nothing changes until you choose to install it.`,
     buttons: ["Download", "Not Now"],
     defaultId: 0,
@@ -130,12 +130,12 @@ export async function checkForUpdates(deps: UpdateCheckerDeps): Promise<UpdateOu
     await deps.ask({ type: "error", message: "The update could not be downloaded.", detail, buttons: ["OK"], defaultId: 0, cancelId: 0 });
     return "failed";
   }
-  deps.log(`Downloaded Origin Studio ${available.version}`);
+  deps.log(`Downloaded LIKHA ${available.version}`);
 
   const install = await deps.ask({
     type: "question",
-    message: `Origin Studio ${available.version} is ready to install.`,
-    detail: "Origin Studio closes (asking about unsaved changes first) and the installer runs. Choose Later to keep working; the update then installs when you next close Origin Studio.",
+    message: `LIKHA ${available.version} is ready to install.`,
+    detail: "LIKHA closes (asking about unsaved changes first) and the installer runs. Choose Later to keep working; the update then installs when you next close LIKHA.",
     buttons: ["Restart and Install", "Later"],
     defaultId: 0,
     cancelId: 1

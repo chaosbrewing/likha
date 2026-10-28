@@ -108,7 +108,7 @@ export class LspConnection {
         messages = this.parser.push(typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk);
       } catch (error) {
         this.options.onProtocolError?.(error instanceof Error ? error : new Error(String(error)));
-        this.dispose("The language server sent data Origin Studio could not read.");
+        this.dispose("The language server sent data LIKHA could not read.");
         return;
       }
       for (const message of messages) {

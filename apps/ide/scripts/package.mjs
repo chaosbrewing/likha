@@ -61,9 +61,9 @@ writeFileSync(
   `${JSON.stringify(
     {
       name: "origin-studio-ide",
-      productName: "Origin Studio",
+      productName: "LIKHA",
       version: manifest.version,
-      description: "Origin Studio desktop IDE",
+      description: "LIKHA desktop IDE",
       author: "Chaos Origins",
       type: "module",
       main: "dist/electron/main.js",
@@ -81,7 +81,7 @@ const artifacts = await build({
   projectDir: stageDir,
   config: {
     appId: "dev.chaosorigins.originstudio",
-    productName: "Origin Studio",
+    productName: "LIKHA",
     copyright: "Copyright © Chaos Origins",
     electronVersion,
     directories: { output: path.join(releaseDir, "dist"), buildResources: path.join(appDir, "build") },
@@ -109,7 +109,7 @@ const artifacts = await build({
     nodeGypRebuild: false,
     win: {
       icon: path.join(appDir, "build", "icon.ico"),
-      executableName: "OriginStudio",
+      executableName: "LIKHA",
       ...(publisherName ? { publisherName: [publisherName] } : {})
     },
     // With a feed, electron-builder writes resources/app-update.yml (read by electron-updater)
@@ -121,13 +121,13 @@ const artifacts = await build({
       allowToChangeInstallationDirectory: true,
       createDesktopShortcut: true,
       createStartMenuShortcut: true,
-      shortcutName: "Origin Studio",
-      artifactName: "OriginStudio-Setup-${version}.exe",
-      uninstallDisplayName: "Origin Studio"
+      shortcutName: "LIKHA",
+      artifactName: "LIKHA-Setup-${version}.exe",
+      uninstallDisplayName: "LIKHA"
     }
   }
 });
 
 console.log("\nPackaged:");
 for (const artifact of artifacts) console.log(`  ${path.relative(appDir, artifact)}`);
-console.log(`  ${path.relative(appDir, path.join(releaseDir, "dist", "win-unpacked", "OriginStudio.exe"))}`);
+console.log(`  ${path.relative(appDir, path.join(releaseDir, "dist", "win-unpacked", "LIKHA.exe"))}`);

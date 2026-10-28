@@ -7,24 +7,24 @@ export function statusCommand(cwd: string): void {
 
   const lines = [
     `Product:    ${PRODUCT_NAME}`,
-    `CLI:        chaos v${getCliVersion()}`,
+    `CLI:        likha v${getCliVersion()}`,
     `Node.js:    ${process.version}`,
     `Directory:  ${cwd}`
   ];
 
   switch (project.state) {
     case "none":
-      lines.push("Project:    No Origin Studio project in this directory");
-      lines.push('            Run "chaos init <name>" to create one.');
+      lines.push("Project:    No LIKHA project in this directory");
+      lines.push('            Run "likha init <name>" to create one.');
       break;
     case "invalid":
-      lines.push("Project:    Origin Studio configuration found, but it is invalid:");
+      lines.push("Project:    LIKHA configuration found, but it is invalid:");
       for (const problem of project.problems) {
         lines.push(`            - ${problem}`);
       }
       break;
     case "valid":
-      lines.push(`Project:    ${project.name} (valid Origin Studio project)`);
+      lines.push(`Project:    ${project.name} (valid LIKHA project)`);
       break;
   }
 

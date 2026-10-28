@@ -1,4 +1,4 @@
-# Origin Studio architecture (Phase 6)
+# LIKHA architecture (Phase 6)
 
 ## Packages
 
@@ -6,17 +6,17 @@
 |---|---|---|---|
 | `@studio/contracts` | anywhere | Shared types and constants: `StudioHostApi`, IPC channel names, workspace/terminal/language types, `Result`/error codes, ORIGIN integration interfaces | — |
 | `@studio/core` | anywhere | Pure logic: project-name and file-name validation, project configuration checks, starter templates | — |
-| `@studio/workspace` | Node.js | Safe filesystem access for one workspace (`WorkspaceService`), project scaffolding (`scaffoldProject`, shared by `chaos init` and New Project), change watching (`watchWorkspace`), project inspection, Git branch, safe npm script names, source-file listing for project-wide checks | contracts, core |
+| `@studio/workspace` | Node.js | Safe filesystem access for one workspace (`WorkspaceService`), project scaffolding (`scaffoldProject`, shared by `likha init` and New Project), change watching (`watchWorkspace`), project inspection, Git branch, safe npm script names, source-file listing for project-wide checks | contracts, core |
 | `@studio/editor` | anywhere | Editor state independent of React, Monaco and Electron: open tabs, unsaved changes, disk versions, language mapping | contracts |
 | `@studio/origin-adapter` | anywhere | ORIGIN adapters: the offline set used by default; the connection lifecycle (`OriginConnection`), the mock and HTTP transports, the link-file ORIGIN Core adapter v2 and the mock sector adapters (behind the `origin-core` flag) | contracts |
-| `@studio/cli` (`apps/cli`) | Node.js | The `chaos` command | core, workspace |
+| `@studio/cli` (`apps/cli`) | Node.js | The `likha` command | core, workspace |
 | `@studio/ide` (`apps/ide`) | Electron | Desktop IDE: `electron/` (host) and `src/` (interface) | all of the above |
 
 Rules:
 
 - The interface (`apps/ide/src`) never imports Electron or Node.js. It talks to its host only through `StudioHostApi` (`window.studio`), so it can later run on a different host (browser, ORIGIN).
 - Filesystem and process work happens only in the Electron main process, through `@studio/workspace`, the terminal manager and the language-server manager.
-- The CLI and the IDE share validation, templates and project inspection; the IDE does not call `chaos` for its own operations.
+- The CLI and the IDE share validation, templates and project inspection; the IDE does not call `likha` for its own operations.
 
 ## Process model
 
@@ -59,7 +59,7 @@ Rules:
 | Language server | Started by the host from a fixed location with fixed arguments; the interface never names an executable. It only ever hears about documents the interface opened; server-internal completion data (which holds absolute paths) stays in the host and is referenced by token and index. Server requests to change files (`workspace/applyEdit`) are refused: edits only come from the user. The process is ended when the window closes |
 | ORIGIN | Off by default. With the `origin-core` flag: the credential is typed once in the interface, crosses IPC as one bounded line (`origin:connect`), is verified with ORIGIN before it is stored, and is stored encrypted with the OS user key (`safeStorage`) in the settings folder, never in a project. The interface only ever receives connection states (no secret), and the log never contains the key. A rejected key is forgotten; an unreachable ORIGIN keeps it. Every adapter call is a read. The link file is read through `WorkspaceService` (same confinement as any file), validated, and never written; ORIGIN's record, not the file, is the source of truth. The HTTP transport accepts https only (http for localhost) and sends the key as a bearer header, never in a URL |
 | Updates | Only on **Help > Check for Updates…**, only in the installed app, and only when a feed was baked in at packaging time (`ORIGIN_STUDIO_UPDATE_URL`, https). Download and install each need a confirmation; the install runs when the app quits, after the usual unsaved-changes guard |
-| Network | None by default. Monaco workers, fonts and grammars are bundled; no telemetry. The only network call Origin Studio can make is the update check the user asks for |
+| Network | None by default. Monaco workers, fonts and grammars are bundled; no telemetry. The only network call LIKHA can make is the update check the user asks for |
 
 ## Language server
 
@@ -88,7 +88,7 @@ server (`tsc --lsp --stdio`, TypeScript 7) in a child process of the main proces
 - While the server is ready, Monaco's own TypeScript worker keeps only formatting, symbols,
   highlights and rename; when it is not (platform without the binary, crash), the worker
   returns to full service with the open-files-only behaviour of Phase 4.
-- The server is the one Origin Studio was built with, shipped with the app
+- The server is the one LIKHA was built with, shipped with the app
   (`resources/typescript`: `tsc.exe` plus its `lib.*.d.ts`), not the project's own `typescript`.
 
 ## External changes
@@ -130,7 +130,7 @@ asynchronous path.
 
 ## Feature flags
 
-`apps/ide/electron/features.ts` reads `%AppData%\Origin Studio\features.json` (an object of
+`apps/ide/electron/features.ts` reads `%AppData%\LIKHA\features.json` (an object of
 booleans keyed by flag name) and the `ORIGIN_STUDIO_FEATURES` environment variable (a
 comma-separated list that turns flags on, used by tests). Every flag is off by default. The
 only flag today is `origin-core`.
@@ -146,7 +146,7 @@ a portable folder. Hardening applied to the packaged executable:
 | Electron fuses | `runAsNode` off, `NODE_OPTIONS` ignored, `--inspect` disabled, `onlyLoadAppFromAsar` on, `embeddedAsarIntegrityValidation` on, `cookieEncryption` on, file:// extra privileges off |
 | Native code | `node-pty` is unpacked from the asar (`asarUnpack`); only `win32-x64` prebuilds ship |
 | Language server | `tsc.exe` and its `lib.*.d.ts` files are copied to `resources/typescript` (`extraResources`), outside the asar, with the TypeScript license and notice |
-| Installer | NSIS, per-user (`%LocalAppData%\Programs\OriginStudio`), no elevation, uninstaller registered under HKCU |
+| Installer | NSIS, per-user (`%LocalAppData%\Programs\LIKHA`), no elevation, uninstaller registered under HKCU |
 | Signing | Only when electron-builder's `WIN_CSC_*` variables are set; never from the repository. `ORIGIN_STUDIO_PUBLISHER_NAME` additionally makes the updater accept only updates signed by that publisher |
 | Update feed | Only when `ORIGIN_STUDIO_UPDATE_URL` (https) is set: electron-builder writes `resources/app-update.yml` into the app and `latest.yml` next to the installer. Nothing is uploaded by the build |
 
@@ -156,7 +156,7 @@ That test also checks that the shipped language server starts under the fuses.
 
 ## Persistence
 
-`%AppData%\Origin Studio\app-state.json` stores window bounds/maximized state and the last workspace folder (validated against current displays on start). `features.json` in the same folder holds feature flags, `origin.json` the ORIGIN transport, and `origin-credential.bin` the encrypted ORIGIN credential (present only while connected). Logs are in `%AppData%\Origin Studio\logs\main.log`.
+`%AppData%\LIKHA\app-state.json` stores window bounds/maximized state and the last workspace folder (validated against current displays on start). `features.json` in the same folder holds feature flags, `origin.json` the ORIGIN transport, and `origin-credential.bin` the encrypted ORIGIN credential (present only while connected). Logs are in `%AppData%\LIKHA\logs\main.log`.
 
 ## Continuous integration
 
@@ -169,6 +169,6 @@ installer as a build artifact.
 | Layer | Location | What it proves |
 |---|---|---|
 | Core, workspace, editor, adapters | `packages/*/test` | Validation, path safety, symbolic links, conflicts, permissions, editor state, source-file listing, ORIGIN contracts and the link-file adapter |
-| CLI | `apps/cli/test` | The compiled `chaos` command (Phase 3) still works |
+| CLI | `apps/cli/test` | The compiled `likha` command (Phase 3) still works |
 | IDE host | `apps/ide/test` | IPC parsers and sender trust, CSP, preload/handler coverage, terminal lifecycle (including a real shell through node-pty), the language server (JSON-RPC framing, LSP conversions, and the real `tsc --lsp` on a temporary project: cross-file diagnostics, hover, definition, references, completion, project check, clean stop), feature flags, the update flow (with a fake updater), window state, shortcuts |
 | End-to-end | `apps/ide/e2e` | The built desktop app: open project, edit and save, conflict guard, binary refusal, create/rename/delete, terminal command, unsaved-changes close prompt, reopen after restart, project-wide Problems and Go to Definition across files, the ORIGIN link through the feature flag |

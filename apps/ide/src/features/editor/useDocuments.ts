@@ -122,7 +122,7 @@ export function useDocuments({ host, dialogs, log }: Deps): Documents {
         await dialogs.notify(
           "File not opened",
           `"${path}" is a binary file or is not UTF-8 text.`,
-          "Origin Studio edits UTF-8 text files. The file was not opened, so it cannot be changed by accident."
+          "LIKHA edits UTF-8 text files. The file was not opened, so it cannot be changed by accident."
         );
         return false;
       }

@@ -125,7 +125,7 @@ export class LanguageServerManager {
   }
 
   /** Ends the server, if any, after a shutdown handshake. Resolves once the process is gone. */
-  stop(reason = "Origin Studio is closing."): Promise<void> {
+  stop(reason = "LIKHA is closing."): Promise<void> {
     return this.serial(() => this.stopNow(reason));
   }
 
@@ -148,10 +148,10 @@ export class LanguageServerManager {
       connection.notify("shutdown");
       connection.notify("exit");
     }
-    connection.dispose("Origin Studio is closing.");
+    connection.dispose("LIKHA is closing.");
     if (alive()) child.kill();
     child.unref();
-    this.currentStatus = { state: "off", detail: "Origin Studio is closing." };
+    this.currentStatus = { state: "off", detail: "LIKHA is closing." };
   }
 
   private async startNow(root: string): Promise<void> {

@@ -44,11 +44,11 @@ test("rejects Windows reserved device names", () => {
   }
 });
 
-test("manifest without Origin Studio section is not a project", () => {
+test("manifest without LIKHA section is not a project", () => {
   assert.deepEqual(checkProjectManifest({ name: "plain" }), { state: "none" });
 });
 
-test("manifest with a malformed Origin Studio section is invalid", () => {
+test("manifest with a malformed LIKHA section is invalid", () => {
   const cases: unknown[] = [
     { name: "x", originStudio: true },
     { name: "x", originStudio: { schemaVersion: 2, language: "typescript" } },

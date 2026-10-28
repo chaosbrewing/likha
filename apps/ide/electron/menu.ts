@@ -69,7 +69,7 @@ export function buildMenu(send: (command: MenuCommand) => void, options: { dev: 
     },
     {
       label: "&Help",
-      submenu: [{ label: "Check for Updates…", click: options.checkForUpdates }, { type: "separator" }, item("About Origin Studio", "about")]
+      submenu: [{ label: "Check for Updates…", click: options.checkForUpdates }, { type: "separator" }, item("About LIKHA", "about")]
     }
   ];
   return Menu.buildFromTemplate(template);

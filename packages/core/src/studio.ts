@@ -4,7 +4,7 @@ export interface StudioInfo {
   status: "ready";
 }
 
-export const PRODUCT_NAME = "Origin Studio";
+export const PRODUCT_NAME = "LIKHA";
 
 export function getStudioInfo(): StudioInfo {
   return {

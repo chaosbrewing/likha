@@ -14,8 +14,8 @@ root.render(
     ) : (
       <main className="welcome">
         <div className="welcome-card">
-          <h1>Origin Studio</h1>
-          <p>This interface needs the Origin Studio desktop host. Start it with npm run ide.</p>
+          <h1>LIKHA</h1>
+          <p>This interface needs the LIKHA desktop host. Start it with npm run ide.</p>
         </div>
       </main>
     )}

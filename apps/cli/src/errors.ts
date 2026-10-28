@@ -20,5 +20,5 @@ export class CliError extends Error {
 }
 
 export function usageError(message: string): CliError {
-  return new CliError(`${message}\nRun "chaos help" to see available commands.`, ExitCode.Usage);
+  return new CliError(`${message}\nRun "likha help" to see available commands.`, ExitCode.Usage);
 }

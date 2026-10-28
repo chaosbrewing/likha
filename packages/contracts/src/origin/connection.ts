@@ -10,7 +10,7 @@ export const ORIGIN_CONNECTION_CONTRACT_VERSION = 1 as const;
 
 /**
  * An ORIGIN API key: 64 lowercase hex characters, the format ORIGIN issues
- * (`apiKeys.create`) and validates (`validateApiKey`). Origin Studio uses it
+ * (`apiKeys.create`) and validates (`validateApiKey`). LIKHA uses it
  * for read access only.
  */
 export const ORIGIN_API_KEY_PATTERN = /^[a-f0-9]{64}$/;
@@ -29,7 +29,7 @@ export interface OriginIdentity {
   organisationId: string | null;
   /** Project the credential is scoped to, when it was issued for one project only. */
   projectId: OriginProjectId | null;
-  /** The coarse view Origin Studio needs; always contains "read" for a usable credential. */
+  /** The coarse view LIKHA needs; always contains "read" for a usable credential. */
   permissions: OriginPermission[];
   /** When the credential stops working, if ORIGIN told us. ISO 8601. */
   expiresAt: string | null;

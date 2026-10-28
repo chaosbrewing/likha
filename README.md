@@ -1,18 +1,18 @@
-# Origin Studio
+# LIKHA
 
-Origin Studio is a development platform and desktop IDE being built under Chaos Origins.
+LIKHA is a development platform and desktop IDE being built under Chaos Origins.
 This npm-workspaces monorepo contains:
 
-- **Origin Studio IDE**: a Windows desktop editor (Electron, React, Monaco, xterm.js). It
+- **LIKHA IDE**: a Windows desktop editor (Electron, React, Monaco, xterm.js). It
   opens a local project, edits and saves files, manages files and folders, runs commands
   in an integrated terminal, and understands the whole project through a TypeScript
   language server.
-- **`chaos`**: the command-line tool that creates and inspects Origin Studio projects.
+- **`likha`**: the command-line tool that creates and inspects LIKHA projects.
 - Shared packages that both apps build on.
 
 Everything runs locally. No ORIGIN account or internet connection is needed.
 
-## Origin Studio IDE
+## LIKHA IDE
 
 ### Install it (Windows)
 
@@ -22,11 +22,11 @@ npm run build
 npm run package
 ```
 
-This produces `apps/ide/release/dist/OriginStudio-Setup-<version>.exe`, a per-user installer
-(no administrator rights needed), and `apps/ide/release/dist/win-unpacked/OriginStudio.exe`,
-a portable copy. The installer puts the app in `%LocalAppData%\Programs\OriginStudio`, adds Start Menu and
-desktop shortcuts, and registers an uninstaller in **Settings > Apps** ("Origin Studio").
-Settings and logs live in `%AppData%\Origin Studio`; the uninstaller leaves them in place. It is
+This produces `apps/ide/release/dist/LIKHA-Setup-<version>.exe`, a per-user installer
+(no administrator rights needed), and `apps/ide/release/dist/win-unpacked/LIKHA.exe`,
+a portable copy. The installer puts the app in `%LocalAppData%\Programs\LIKHA`, adds Start Menu and
+desktop shortcuts, and registers an uninstaller in **Settings > Apps** ("LIKHA").
+Settings and logs live in `%AppData%\Origin Studio` (the folder name from before the rename to LIKHA is kept on purpose, so existing settings and the stored ORIGIN credential carry over); the uninstaller leaves them in place. It is
 not code-signed, so Windows SmartScreen shows a warning on first run; see
 [Code signing](#code-signing).
 
@@ -57,7 +57,7 @@ Changes under `apps/ide/electron` need a restart of `ide:dev`.
 
 | Area | Features |
 |---|---|
-| Workspace | Open Folder (Ctrl+O) and **New Project** (File menu or the welcome screen), which creates the same starter as `chaos init` and opens it. Reopens the last folder. The status bar shows the folder, whether it is a valid Origin Studio project, and the Git branch |
+| Workspace | Open Folder (Ctrl+O) and **New Project** (File menu or the welcome screen), which creates the same starter as `likha init` and opens it. Reopens the last folder. The status bar shows the folder, whether it is a valid LIKHA project, and the Git branch |
 | Watching | Changes made by other programs are picked up: the explorer updates by itself, an open file without unsaved edits follows the disk, and a file with unsaved edits shows a notice with **Reload from Disk** / **Keep My Version**. A file deleted outside the IDE is reported in its tab |
 | Explorer | Folder tree with expand/collapse and keyboard navigation (arrows, Enter, F2 to rename, Del to delete). New File, New Folder, Rename, Delete, Refresh and Collapse All. Unsaved files are marked |
 | Editor | Monaco: tabs, syntax highlighting, line numbers, find (Ctrl+F), unsaved-change indicators. Save (Ctrl+S), Save As (Ctrl+Shift+S), Save All, Close Tab (Ctrl+W), Ctrl+Tab to switch tabs |
@@ -69,14 +69,14 @@ Changes under `apps/ide/electron` need a restart of `ide:dev`.
 | Updates | **Help > Check for Updates…** checks a release feed only when you ask, and only for builds packaged with one. See [Updates](#updates) |
 | Window | Size, position and maximized state are remembered and kept on a visible screen |
 
-The `chaos` CLI works in the integrated terminal as in any other terminal. In a Windows
-PowerShell 5.1 terminal, use `chaos.cmd` if the execution policy blocks `chaos` (the
-terminal prints this hint). PowerShell 7 terminals are not affected. Origin Studio never
+The `likha` CLI works in the integrated terminal as in any other terminal. In a Windows
+PowerShell 5.1 terminal, use `likha.cmd` if the execution policy blocks `likha` (the
+terminal prints this hint). PowerShell 7 terminals are not affected. LIKHA never
 changes the execution policy.
 
 ### TypeScript intelligence
 
-When a folder opens, Origin Studio starts the native TypeScript 7 compiler as a language
+When a folder opens, LIKHA starts the native TypeScript 7 compiler as a language
 server (`tsc --lsp`) for it, in a separate process that ends with the window. The server
 reads the project's `tsconfig.json` and files from disk, and the editor keeps it informed
 about the files you have open, so:
@@ -89,7 +89,7 @@ about the files you have open, so:
   available (another platform, or the process stopped), the status bar says so and the editor
   falls back to Monaco's built-in worker, which only sees open files.
 
-The server is the TypeScript build Origin Studio ships with, not the one in the project's
+The server is the TypeScript build LIKHA ships with, not the one in the project's
 `node_modules`. Project-wide checks cover up to 2000 source files (`node_modules`, build
 output and hidden folders are skipped); larger projects are told that only the first files
 were checked.
@@ -97,29 +97,29 @@ were checked.
 ### Feature flags
 
 Work that is not part of the default experience yet is off unless you turn it on. Create
-`%AppData%\Origin Studio\features.json`:
+`%AppData%\LIKHA\features.json`:
 
 ```json
 { "origin-core": true }
 ```
 
 or set `ORIGIN_STUDIO_FEATURES=origin-core` (a comma-separated list) when starting the app.
-The log line `Starting Origin Studio …; features: …` shows what is on.
+The log line `Starting LIKHA …; features: …` shows what is on.
 
 **`origin-core`** — the ORIGIN connection and project link (Phase 7).
 
 *Connecting.* **ORIGIN > Connect to ORIGIN…** asks for an ORIGIN API key (64 hexadecimal
-characters, the format ORIGIN issues). The key must have been issued **with Origin Studio read
+characters, the format ORIGIN issues). The key must have been issued **with LIKHA read
 access** (ORIGIN's `project.read` scope, a checkbox on ORIGIN's API keys page); a key without it,
 including every key issued before that option existed, is refused as *forbidden* and never
 stored. A key ORIGIN accepts is verified with ORIGIN first and only then
-stored, encrypted with your Windows user key, in `%AppData%\Origin Studio\origin-credential.bin`.
+stored, encrypted with your Windows user key, in `%AppData%\LIKHA\origin-credential.bin`.
 It is never written to a project, never logged, and used for reads only. **Disconnect** forgets
 it; **Refresh ORIGIN Status** re-verifies it. A key ORIGIN rejects (invalid, expired, revoked, or issued without read access) is
 forgotten at once and the status bar says why; when ORIGIN cannot be reached the status bar
 shows **unavailable**, the key is kept, and everything else keeps working.
 
-*Where ORIGIN is.* `%AppData%\Origin Studio\origin.json` names the transport:
+*Where ORIGIN is.* `%AppData%\LIKHA\origin.json` names the transport:
 
 ```json
 { "transport": "mock" }
@@ -152,7 +152,7 @@ as before.
 
 ### Updates
 
-**Help > Check for Updates…** is the only time Origin Studio contacts the network, and it
+**Help > Check for Updates…** is the only time LIKHA contacts the network, and it
 does nothing unless you choose it. It needs an update feed baked into the build:
 
 ```powershell
@@ -163,7 +163,7 @@ npm run package
 The build then contains `resources/app-update.yml`, and `apps/ide/release/dist` contains
 `latest.yml`, which must be uploaded next to the installer at that URL. The check compares
 versions, asks before downloading, verifies the download's SHA-512 against `latest.yml`, and
-asks again before installing; the installer runs when Origin Studio quits (after the usual
+asks again before installing; the installer runs when LIKHA quits (after the usual
 unsaved-changes prompt). Without a feed, the menu item says that this build has no update
 feed configured. Development runs (`npm run ide`) cannot update.
 
@@ -196,23 +196,25 @@ isolated preload, validated IPC, workspace path confinement, strict CSP) and the
 hardening (Electron fuses, integrity-checked `app.asar`). ORIGIN connection points, and
 the one adapter that exists, are in [docs/integration/README.md](docs/integration/README.md).
 
-## The `chaos` CLI
+## The `likha` CLI
 
-`chaos` is the Origin Studio command-line tool. It can:
+> **Renamed.** This command was `chaos` before the LIKHA rename. `chaos` still works in the first LIKHA release as a temporary alias that prints one notice on stderr; see [docs/LIKHA_MIGRATION.md](docs/LIKHA_MIGRATION.md).
+
+`likha` is the LIKHA command-line tool. It can:
 
 | Command | What it does |
 |---|---|
-| `chaos init <name>` | Creates a new folder `<name>` containing a minimal, runnable TypeScript project |
-| `chaos status` | Shows the product, CLI version, Node.js version, current folder, and whether that folder is a valid Origin Studio project |
-| `chaos help`, `chaos --help`, `chaos -h` | Shows available commands |
-| `chaos version`, `chaos --version`, `chaos -v` | Prints the CLI version (read from `apps/cli/package.json`) |
+| `likha init <name>` | Creates a new folder `<name>` containing a minimal, runnable TypeScript project |
+| `likha status` | Shows the product, CLI version, Node.js version, current folder, and whether that folder is a valid LIKHA project |
+| `likha help`, `likha --help`, `likha -h` | Shows available commands |
+| `likha version`, `likha --version`, `likha -v` | Prints the CLI version (read from `apps/cli/package.json`) |
 
-Running `chaos` with no arguments shows help.
+Running `likha` with no arguments shows help.
 
-### `chaos init`
+### `likha init`
 
 ```powershell
-chaos init my-project
+likha init my-project
 ```
 
 creates:
@@ -245,19 +247,19 @@ Safety rules:
 - An existing folder is only used if it is empty. A non-empty folder or an existing file is
   never touched. Individual files are written with "create only" semantics, so nothing is
   ever overwritten.
-- `chaos` never deletes files. If a write fails partway (for example, permission denied),
+- `likha` never deletes files. If a write fails partway (for example, permission denied),
   the error lists what was created so you can decide what to do with it.
 
 ### Project configuration
 
-A folder is an Origin Studio project when its `package.json` contains a valid
+A folder is a LIKHA project when its `package.json` contains a valid
 `originStudio` section and the expected files exist:
 
 ```json
 "originStudio": { "schemaVersion": 1, "language": "typescript" }
 ```
 
-`chaos status` and the IDE's status bar validate that section and check for
+`likha status` and the IDE's status bar validate that section and check for
 `package.json`, `tsconfig.json` and `src/index.ts`. Having a `package.json` is not enough.
 
 ### Exit codes
@@ -270,7 +272,7 @@ A folder is an Origin Studio project when its `package.json` contains a valid
 
 Errors are written to stderr and start with `Error:`.
 
-### Installing the `chaos` command
+### Installing the `likha` command
 
 Global link (recommended for development):
 
@@ -278,25 +280,25 @@ Global link (recommended for development):
 npm install
 npm run build
 npm link -w @studio/cli
-chaos --version
+likha --version
 ```
 
-`npm link` adds `chaos`, `chaos.cmd` and `chaos.ps1` to your global npm folder
+`npm link` adds `likha`, `likha.cmd` and `likha.ps1` to your global npm folder
 (`npm config get prefix`, usually `%AppData%\npm`) and points them at this checkout, so
 rebuilding updates the command immediately. To remove it: `npm unlink -g @studio/cli`.
 
 Project-local, with no global changes: after `npm install` and `npm run build`, run
-`npm install` once more so npm links the newly built bin, then use `npx chaos status` or
-`.\node_modules\.bin\chaos.cmd --version`.
+`npm install` once more so npm links the newly built bin, then use `npx likha status` or
+`.\node_modules\.bin\likha.cmd --version`.
 
 ### Windows PowerShell 5.1 and execution policy
 
-npm creates a `chaos.ps1` shim, and PowerShell prefers it over `chaos.cmd`. Under
+npm creates a `likha.ps1` shim, and PowerShell prefers it over `likha.cmd`. Under
 Windows' default `Restricted` execution policy, **Windows PowerShell 5.1** refuses to run it
 (npm's own `npm.ps1` hits the same restriction). Any one of these works:
 
 - Use **PowerShell 7** (`pwsh`), whose default policy (`RemoteSigned`) allows it.
-- Run `chaos.cmd` instead of `chaos`, e.g. `chaos.cmd status`.
+- Run `likha.cmd` instead of `likha`, e.g. `likha.cmd status`.
 - Allow local scripts for your user account. This is your decision, because it changes a
   security setting: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
 
@@ -307,7 +309,7 @@ Windows' default `Restricted` execution policy, **Windows PowerShell 5.1** refus
 ```text
 origin-studio/
 ├── apps/
-│   ├── cli/                  @studio/cli: the `chaos` command
+│   ├── cli/                  @studio/cli: the `likha` command
 │   └── ide/                  @studio/ide: desktop IDE
 │       ├── electron/         main process: window, menu, IPC, protocol, terminals, language server, updates, preload
 │       ├── src/              interface (React): components/, features/ (editor, explorer, language, terminal, dialogs), hooks/, styles/
@@ -350,7 +352,7 @@ npm test                # builds, then runs all unit tests (packages, CLI, IDE h
 npm run test:e2e        # end-to-end tests of the built IDE (opens app windows briefly)
 npm run test:e2e:live   # live read-only test against a real ORIGIN (needs ORIGIN_STUDIO_LIVE_* variables; skipped otherwise)
 npm run package         # Windows installer + portable folder in apps/ide/release/dist
-npm run test:package    # smoke test of the packaged OriginStudio.exe
+npm run test:package    # smoke test of the packaged LIKHA.exe
 npm run ide             # start the built IDE
 npm run ide:dev         # start the IDE with hot reload
 npm run cli -- status   # run the CLI from source via tsx
@@ -395,13 +397,13 @@ IDE:
 
 CLI:
 
-- `chaos init` has a single TypeScript starter, with no templates, options or prompts.
-- `chaos init` does not run `npm install` or `git init` for you.
+- `likha init` has a single TypeScript starter, with no templates, options or prompts.
+- `likha init` does not run `npm install` or `git init` for you.
 - Starter dependencies (`typescript ^7.0.2`, `@types/node ^26.6.5`) follow this repository's
   toolchain, and `npm install` in a new project needs network access or a warm npm cache.
 - The CLI is not published to a registry; it is installed from this checkout.
 - `npm run cli -- <command>` runs inside `apps/cli` (npm workspace behaviour), so `status`
-  and `init` act on that folder. Use the installed `chaos` command for real work.
+  and `init` act on that folder. Use the installed `likha` command for real work.
 
 General:
 
@@ -418,7 +420,7 @@ General:
 1. ORIGIN side (branch `desktop/api-key-read-access` in the ORIGIN repository): read-only
    desktop access with ORIGIN API keys on `auth.me` and `projects.get`, scope-checked, with
    browser sessions untouched and mutations still session-only; unit and database-backed tests.
-2. Live read-only integration verified between Origin Studio 0.4.0 and a local ORIGIN
+2. Live read-only integration verified between LIKHA 0.4.0 and a local ORIGIN
    development server; the transport keeps ORIGIN's rejection reasons.
 3. `npm run test:e2e:live`, a gated acceptance test for any reachable ORIGIN.
 4. Report: [docs/qa/phase-8-report.md](docs/qa/phase-8-report.md). Stop point: deploying the

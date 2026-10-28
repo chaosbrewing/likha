@@ -8,4 +8,4 @@ const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 await viteBuild({ configFile: path.join(appDir, "vite.config.ts"), logLevel: "warn" });
 await bundleElectron();
-console.log("Built Origin Studio IDE into apps/ide/dist");
+console.log("Built LIKHA IDE into apps/ide/dist");

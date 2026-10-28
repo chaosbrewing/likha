@@ -9,7 +9,7 @@ export interface ProjectFile {
   contents: string;
 }
 
-// Kept in step with the toolchain Origin Studio itself is built and tested with.
+// Kept in step with the toolchain LIKHA itself is built and tested with.
 const STARTER_DEV_DEPENDENCIES = {
   "@types/node": "^26.6.5",
   typescript: "^7.0.2"
@@ -67,7 +67,7 @@ export function getStarterFiles(name: string): ProjectFile[] {
   const readme = [
     `# ${name}`,
     "",
-    "Created with Origin Studio (`chaos init`).",
+    "Created with LIKHA (`likha init`).",
     "",
     "## Getting started",
     "",

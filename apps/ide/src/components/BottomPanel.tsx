@@ -88,7 +88,7 @@ export function BottomPanel(props: BottomPanelProps) {
                 {props.problemsScope ? `No problems detected in the project (${props.problemsScope.filesChecked} source file${props.problemsScope.filesChecked === 1 ? "" : "s"} checked).` : "No problems detected in open files."}
               </li>
             ) : null}
-            {props.problemsScope?.truncated ? <li className="panel-message">The project has more source files than Origin Studio checks; only the first files are included.</li> : null}
+            {props.problemsScope?.truncated ? <li className="panel-message">The project has more source files than LIKHA checks; only the first files are included.</li> : null}
             {props.problems.map((problem, index) => (
               <li key={index}>
                 <button type="button" onClick={() => props.onOpenProblem(problem)}>

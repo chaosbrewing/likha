@@ -133,7 +133,7 @@ export function createMockSectorAdapters(options: MockSectorOptions = {}): Omit<
     },
     async handOffDeployment(request: DeploymentHandoff) {
       if (!request.sourceRevision) return fail("INVALID_ARGUMENT", "A deployment handoff needs a source revision.");
-      return fail("CONFIRMATION_REQUIRED", "Deployments are approved and executed in ORIGIN; Origin Studio only prepares the request (not implemented in the mock).");
+      return fail("CONFIRMATION_REQUIRED", "Deployments are approved and executed in ORIGIN; LIKHA only prepares the request (not implemented in the mock).");
     }
   };
 

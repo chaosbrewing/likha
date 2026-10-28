@@ -81,7 +81,7 @@ export interface StudioHostApi {
     openFolderDialog(): Promise<Result<WorkspaceInfo | null>>;
     /**
      * Asks where to create a new project called `name` (native folder picker),
-     * creates it with the same rules as `chaos init`, and opens it. Null when cancelled.
+     * creates it with the same rules as `likha init`, and opens it. Null when cancelled.
      */
     newProjectDialog(name: string): Promise<Result<WorkspaceInfo | null>>;
     current(): Promise<Result<WorkspaceInfo | null>>;
