@@ -1,6 +1,6 @@
 # ORIGIN integration (Phase 7)
 
-**Status in one line (Phase 8):** Origin Studio connects read-only to an ORIGIN that carries
+**Status in one line (Phase 8):** LIKHA connects read-only to an ORIGIN that carries
 ORIGIN's `desktop/api-key-read-access` change: verified **live against a local ORIGIN
 development server** on 2026-10-24 and again on 2026-10-25 after the Phase 8 finalization
 added the scope requirement (a key must carry ORIGIN's `project.read` scope; see "What was
@@ -33,7 +33,7 @@ clean, same as GitHub `chaosbrewing/ORIGIN`) and by probing public hosts without
 | How does ORIGIN authenticate? | Browser sessions only: a JWT cookie issued after Manus OAuth (`/api/oauth/callback`), Replit OIDC, or the dev-only `/api/dev/login`. tRPC's `createContext` calls `sdk.authenticateRequest(req)`, which reads the cookie. | `server/_core/context.ts`, `server/_core/oauth.ts`, `server/_core/sdk.ts` |
 | Do API keys exist? | As records and management procedures, yes: `apiKeys.list/create/revoke/delete` issue 64-hex keys (SHA-256 stored, 20-char prefix shown), scoped to user, organisation, project or service identity, with `active/revoked/expired` status and optional expiry. | `drizzle/schema.ts` `apiKeys`, `server/routers.ts` `apiKeys` |
 | Can an API key call anything? | On `main`: **no** (`validateApiKey` exists but is never mounted; the tRPC context ignores bearer keys). On ORIGIN branch **`desktop/api-key-read-access`** (Phase 8, not merged, not deployed): **yes, read-only** — `auth.me` and `projects.get` accept `Authorization: Bearer <key>` through `server/_core/desktopAuth.ts` and `desktopReadProcedure`; every mutation and every other procedure still requires a browser session. **Finalization (2026-10-25):** the key must have been issued with the `project.read` scope (new nullable `apiKeys.scopes` column, MySQL migration 0018 / PostgreSQL 0003, opt-in checkbox on ORIGIN's API keys page); every key issued without it, including every pre-existing key, is refused with 403 `FORBIDDEN` and keeps granting nothing. Design: ORIGIN `docs/DESKTOP_API_KEY_ACCESS.md`. | ORIGIN `server/desktop-auth.test.ts` (15), `server/desktop-auth.integration.test.ts` (10, real MySQL), `docs/verification/desktop-api-key-probes-2026-10-25.txt` (copy in [`../qa/phase-8-evidence/`](../qa/phase-8-evidence/)) |
-| Live read-only connection from Origin Studio | **Verified locally, 2026-10-24 and 2026-10-25**: ORIGIN branch above running with `pnpm dev` on `http://127.0.0.1:5055` against a disposable MySQL 8 container (19 migrations); a dedicated test account, a disposable project and a project-scoped key issued through `apiKeys.create` with `scopes: ["project.read"]`; Origin Studio 0.4.0 (`transport: "http"`) connected, showed the project verified with ORIGIN's name, refused another user's project, a revoked key and a key issued without the scope (status bar "sign in again (forbidden)", nothing stored). Not a production deployment; no reachable deployment carries the change. | Studio `apps/ide/e2e/origin-live.test.ts`, [`../qa/phase-8-evidence/`](../qa/phase-8-evidence/), ORIGIN `docs/verification/desktop-origin-studio-live-2026-10-25.jsonl` |
+| Live read-only connection from LIKHA | **Verified locally, 2026-10-24 and 2026-10-25**: ORIGIN branch above running with `pnpm dev` on `http://127.0.0.1:5055` against a disposable MySQL 8 container (19 migrations); a dedicated test account, a disposable project and a project-scoped key issued through `apiKeys.create` with `scopes: ["project.read"]`; LIKHA 0.4.0 (`transport: "http"`) connected, showed the project verified with ORIGIN's name, refused another user's project, a revoked key and a key issued without the scope (status bar "sign in again (forbidden)", nothing stored). Not a production deployment; no reachable deployment carries the change. | Studio `apps/ide/e2e/origin-live.test.ts`, [`../qa/phase-8-evidence/`](../qa/phase-8-evidence/), ORIGIN `docs/verification/desktop-origin-studio-live-2026-10-25.jsonl` |
 | Canonical project data | `projects.get({ projectId: number })` behind `requireProjectPermission(user, project, "project.read")`; `projects.list`; permissions come from organisation roles (`server/platform/iam.ts`). | `server/routers.ts` lines 173–232 |
 | Sector surfaces | TALA = Aithusa router (`createProposal`, `approveProposal`, `rejectProposal`, `cancelProposal`, `getProposal`, …). AGOS: `shared/agosWorkflow.ts` contract v1, no routes, "planned". LIYAB: sandbox foundation on a draft branch, production refuses every operation. BINHI: standalone product with its own accounts, `docs/ORIGIN_INTEGRATION.md` is a specification. Origin Pocket: **not mentioned anywhere** in ORIGIN, Tala or binhi. | ORIGIN `server/aithusa/router.ts`, ORIGIN-liyab `docs/AGOS_WORKFLOW_CONTRACT.md`, `docs/LIYAB_SANDBOX_FOUNDATION.md`, binhi `docs/ORIGIN_INTEGRATION.md` |
 | Process | ORIGIN's own docs record that the "Chaos Origins App Development Workflow" was not found; the installed Sulit Sequence plugin states it replaces that workflow. | `docs/ORIGIN_PRODUCT_DECISIONS.md` "Current blockers"; Sulit Sequence README |
@@ -47,7 +47,7 @@ publish. Until then a shipped build is configured with `mock` or `none`.
 | Piece | Real or mock | Notes |
 |---|---|---|
 | Connection lifecycle (`OriginConnection`) | Real code, tested | connect / disconnect / restore / refresh; states `disconnected`, `connecting`, `connected`, `unauthorized` (invalid, expired, revoked, forbidden), `unavailable` |
-| Credential storage (`origin-vault.ts`) | Real | Electron `safeStorage` (DPAPI) in `%AppData%\Origin Studio\origin-credential.bin`; nothing stored without OS encryption |
+| Credential storage (`origin-vault.ts`) | Real | Electron `safeStorage` (DPAPI) in `%AppData%\LIKHA\origin-credential.bin`; nothing stored without OS encryption |
 | Link file reading (`.origin/project.json`) | Real | Through `WorkspaceService` path confinement; validated; never written |
 | ORIGIN Core transport `mock` | **Mock** | `MockOriginTransport` fixtures (below) |
 | ORIGIN Core transport `http` | Real client, **verified live locally** (Phase 8) | Targets ORIGIN's `auth.me` and `projects.get` with a bearer key; unit-tested against an in-process fake and run against a local ORIGIN development server carrying the desktop-access change; keeps tRPC's error reason on 401/403/404; an ORIGIN without that change answers "null user", reported as unauthorized |
@@ -75,12 +75,12 @@ Rules the code enforces (and the tests check):
 5. The key crosses IPC once, when typed (`origin:connect`, a bounded single line). It is never
    sent to the interface afterwards, never logged, never written to a project file, and the
    mock records only its first four characters.
-6. Origin Studio uses a credential for reads only. There is no write call in any adapter.
+6. LIKHA uses a credential for reads only. There is no write call in any adapter.
 7. With no transport configured the connection refuses to connect and says why.
 
 ## Configuration
 
-`%AppData%\Origin Studio\origin.json` (feature `origin-core` must be on, see the README):
+`%AppData%\LIKHA\origin.json` (feature `origin-core` must be on, see the README):
 
 ```json
 { "transport": "mock" }
@@ -124,7 +124,7 @@ The link is re-resolved whenever the connection state changes or the link file c
 
 | Sector | Contract | Maps to | Mock behaviour |
 |---|---|---|---|
-| BINHI | `BinhiAdapterV1`: `listSites`, `getSite`, `requestEditorHandoff` | binhi `docs/ORIGIN_INTEGRATION.md` (identity, ownership, publishing seams); editor handoff is Origin Studio's proposal | Two fixture sites for proj_42; handoff returns a fixture URL the user may open |
+| BINHI | `BinhiAdapterV1`: `listSites`, `getSite`, `requestEditorHandoff` | binhi `docs/ORIGIN_INTEGRATION.md` (identity, ownership, publishing seams); editor handoff is LIKHA's proposal | Two fixture sites for proj_42; handoff returns a fixture URL the user may open |
 | TALA | `TalaAdapterV1`: `capabilities`, `requestApproval`, `getApproval`, `cancelApproval`, `listApprovals`; plus the Phase 6 `TalaProposalAdapter` (propose / decide / markApplied / auditLog) | Aithusa proposals (`createProposal`, `approveProposal`, `rejectProposal`, `cancelProposal`) | Three capabilities (one disabled); approvals pending until `simulateDecision`; decisions final; only pending requests can be cancelled |
 | AGOS | `AgosAdapterV1`: `listWorkflows`, `listRuns`, `getRun`; plus `publish(event)` | AGOS workflow contract v1 (`contractVersion`, idempotency key, `completed`/`rejected` outcomes) | One workflow, two runs; events recorded in memory |
 | LIYAB | `LiyabAdapterV1`: `snapshot`, `logs`; plus `handOffDeployment` | LIYAB sandbox contract (`simulated` flag, lifecycle and health vocabularies from `shared/platform.ts`) | Simulated builds, tests, runtimes; deployment handoff answers `CONFIRMATION_REQUIRED` (the IDE never deploys) |

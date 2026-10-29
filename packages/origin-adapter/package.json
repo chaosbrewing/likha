@@ -2,7 +2,7 @@
   "name": "@studio/origin-adapter",
   "version": "0.1.0",
   "private": true,
-  "description": "ORIGIN integration adapters for Origin Studio. Currently offline adapters and test mocks only.",
+  "description": "ORIGIN integration adapters for LIKHA. Currently offline adapters and test mocks only.",
   "type": "module",
   "exports": {
     ".": {

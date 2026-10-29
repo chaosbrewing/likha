@@ -80,7 +80,7 @@ export function App({ host }: { host: StudioHostApi }) {
   const applyWorkspace = useCallback(
     (info: WorkspaceInfo) => {
       setWorkspace(info);
-      document.title = `${info.name} - Origin Studio`;
+      document.title = `${info.name} - LIKHA`;
       void explorer.reset();
     },
     [explorer]
@@ -113,7 +113,7 @@ export function App({ host }: { host: StudioHostApi }) {
   const originConnect = useCallback(async () => {
     const secret = await dialogs.prompt({
       title: "Connect to ORIGIN",
-      label: "ORIGIN API key (64 hexadecimal characters). It is verified with ORIGIN, then stored encrypted on this computer. Origin Studio only reads from ORIGIN.",
+      label: "ORIGIN API key (64 hexadecimal characters). It is verified with ORIGIN, then stored encrypted on this computer. LIKHA only reads from ORIGIN.",
       initialValue: "",
       confirmLabel: "Connect",
       secret: true,
@@ -483,7 +483,7 @@ export function App({ host }: { host: StudioHostApi }) {
     if (closing.current) return;
     closing.current = true;
     try {
-      const allow = await resolveRef.current("close Origin Studio");
+      const allow = await resolveRef.current("close LIKHA");
       unloadAllowed.current = allow;
       await host.app.confirmClose(allow);
     } finally {
@@ -528,7 +528,7 @@ export function App({ host }: { host: StudioHostApi }) {
       <header className="title-bar">
         <span className="brand">
           <img src={logo} alt="" className="brand-logo" />
-          ORIGIN STUDIO
+          LIKHA
         </span>
         <span className="title-workspace">{workspace ? workspace.name : ""}</span>
         <div className="toolbar">
@@ -566,7 +566,7 @@ export function App({ host }: { host: StudioHostApi }) {
                   <span className="codicon codicon-warning" aria-hidden="true" />
                   {documents.external[active.path] === "deleted" ? (
                     <>
-                      <span>This file was deleted or moved outside Origin Studio. Saving will create it again.</span>
+                      <span>This file was deleted or moved outside LIKHA. Saving will create it again.</span>
                       <button type="button" className="button small" onClick={() => void documents.requestClose(active.path)}>
                         Close Tab
                       </button>
@@ -592,7 +592,7 @@ export function App({ host }: { host: StudioHostApi }) {
           {started ? (
             <div className="welcome-card">
               <img src={logo} alt="" className="welcome-logo" />
-              <h1>Origin Studio</h1>
+              <h1>LIKHA</h1>
               <p>Open a project folder to browse, edit and run it, or start a new one.</p>
               <div className="welcome-actions">
                 <button type="button" className="button primary large" onClick={() => void runCommand("open-folder")}>
@@ -604,7 +604,7 @@ export function App({ host }: { host: StudioHostApi }) {
               </div>
               <p className="welcome-note">Everything runs on this computer. No account or internet connection is needed.</p>
               <p className="welcome-note">
-                New Project creates the same starter as <code>chaos init</code>.
+                New Project creates the same starter as <code>likha init</code>.
               </p>
             </div>
           ) : null}

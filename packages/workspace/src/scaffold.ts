@@ -50,8 +50,8 @@ function checkTargetIsUsable(target: string): Result<void> {
 }
 
 /**
- * Creates a new Origin Studio project folder `name` directly inside
- * `parentDir`, used by both `chaos init` and the IDE's New Project.
+ * Creates a new LIKHA project folder `name` directly inside
+ * `parentDir`, used by both `likha init` and the IDE's New Project.
  * Never overwrites: an existing folder is used only when empty, and each file
  * is written with create-only semantics. Never deletes partial output.
  */

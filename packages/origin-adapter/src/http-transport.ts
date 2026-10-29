@@ -100,7 +100,7 @@ export class HttpOriginTransport implements OriginTransport {
     try {
       response = await this.fetchImpl(`${this.target}/api/trpc/${procedure}${query}`, {
         method: "GET",
-        headers: { accept: "application/json", authorization: `Bearer ${credential.secret}`, "user-agent": "OriginStudio" },
+        headers: { accept: "application/json", authorization: `Bearer ${credential.secret}`, "user-agent": "LIKHA" },
         signal: controller.signal,
         redirect: "manual"
       });

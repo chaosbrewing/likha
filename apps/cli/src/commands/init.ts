@@ -5,10 +5,10 @@ export function initCommand(args: string[], cwd: string): void {
   const [rawName, ...extra] = args;
 
   if (rawName === undefined) {
-    throw usageError('Missing project name. Usage: chaos init <name>');
+    throw usageError('Missing project name. Usage: likha init <name>');
   }
   if (extra.length > 0) {
-    throw usageError(`Unexpected arguments: ${extra.join(" ")}. Usage: chaos init <name>`);
+    throw usageError(`Unexpected arguments: ${extra.join(" ")}. Usage: likha init <name>`);
   }
 
   const result = scaffoldProject(cwd, rawName);
@@ -24,7 +24,7 @@ export function initCommand(args: string[], cwd: string): void {
   }
 
   const { root, name, files } = result.value;
-  console.log(`Created Origin Studio project "${name}" in ${root}
+  console.log(`Created LIKHA project "${name}" in ${root}
 
 Files:
 ${files.map((file) => `  ${file}`).join("\n")}

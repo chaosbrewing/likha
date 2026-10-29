@@ -1,4 +1,4 @@
-// Smoke test of the PACKAGED app (release/dist/win-unpacked/OriginStudio.exe).
+// Smoke test of the PACKAGED app (release/dist/win-unpacked/LIKHA.exe).
 // Run `npm run build` and `npm run package` first.
 //
 // The release build has Electron fuses that disable Node's --inspect and
@@ -8,7 +8,7 @@
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,7 +16,7 @@ import { chromium } from "playwright-core";
 import { getStarterFiles } from "@studio/core";
 
 const appDir = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
-const exe = path.join(appDir, "release", "dist", "win-unpacked", "OriginStudio.exe");
+const exe = path.join(appDir, "release", "dist", "win-unpacked", "LIKHA.exe");
 const tempRoot = mkdtempSync(path.join(os.tmpdir(), "origin-studio-packaged-"));
 const workspace = path.join(tempRoot, "packaged-project");
 const userData = path.join(tempRoot, "user-data");
@@ -64,8 +64,8 @@ test("the packaged executable starts, opens a project, edits a file and runs a s
     // Loaded from the packaged app:// origin with the project open.
     await page.locator('.tree-row[data-path="src"]').waitFor({ timeout: 30_000 });
     assert.equal(await page.evaluate(() => location.origin), "app://studio");
-    assert.match(await page.title(), /packaged-project - Origin Studio/);
-    assert.match(await page.locator(".status-bar").innerText(), /Origin Studio project/);
+    assert.match(await page.title(), /packaged-project - LIKHA/);
+    assert.match(await page.locator(".status-bar").innerText(), /LIKHA project/);
     assert.equal(await page.evaluate(() => typeof (window as unknown as { require?: unknown }).require), "undefined");
 
     // Edit and save through the real file service.
@@ -98,7 +98,8 @@ test("the packaged executable starts, opens a project, edits a file and runs a s
     await page.evaluate(() => window.close());
     assert.equal(await exited, 0);
     const state = JSON.parse(readFileSync(path.join(userData, "app-state.json"), "utf8"));
-    assert.equal(path.resolve(state.lastWorkspace), path.resolve(workspace));
+    // realpath: the runner's temp folder can be spelled with an 8.3 short name (RUNNER~1) or the long one.
+    assert.equal(realpathSync.native(state.lastWorkspace), realpathSync.native(workspace));
   } finally {
     await browser.close().catch(() => undefined);
   }

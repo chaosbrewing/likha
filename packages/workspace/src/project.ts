@@ -7,8 +7,8 @@ import {
 } from "@studio/core";
 
 /**
- * Inspects a directory for a valid Origin Studio project. Read-only.
- * Shared by `chaos status` and the IDE.
+ * Inspects a directory for a valid LIKHA project. Read-only.
+ * Shared by `likha status` and the IDE.
  */
 export function inspectProject(dir: string): ProjectConfigCheck {
   const manifestPath = path.join(dir, "package.json");

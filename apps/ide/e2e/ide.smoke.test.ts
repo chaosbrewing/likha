@@ -6,7 +6,7 @@
 // Recycle Bin, because that is what the app does.
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -82,8 +82,8 @@ test("primary development journey", { timeout: 240_000 }, async () => {
 
   // 1. Launch with the project open.
   await page.locator('.tree-row[data-path="src"]').waitFor();
-  assert.match(await page.title(), /smoke-project - Origin Studio/);
-  assert.match(await page.locator(".status-bar").innerText(), /Origin Studio project/);
+  assert.match(await page.title(), /smoke-project - LIKHA/);
+  assert.match(await page.locator(".status-bar").innerText(), /LIKHA project/);
   await shot(page, "01-launched");
 
   // 2. Security boundary seen from the interface.
@@ -203,7 +203,8 @@ test("primary development journey", { timeout: 240_000 }, async () => {
   assert.deepEqual(errors, [], "no errors in the interface console");
 
   const state = JSON.parse(readFileSync(path.join(userData, "app-state.json"), "utf8"));
-  assert.equal(path.resolve(state.lastWorkspace), path.resolve(workspace));
+  // realpath: the runner's temp folder can be spelled with an 8.3 short name (RUNNER~1) or the long one.
+  assert.equal(realpathSync.native(state.lastWorkspace), realpathSync.native(workspace));
   assert.ok(state.window.bounds.width >= 640);
 });
 
@@ -260,7 +261,7 @@ test("changes made outside the IDE are picked up", { timeout: 120_000 }, async (
   writeFileSync(indexFile, "// restored\n");
 });
 
-test("New Project creates and opens a starter project with the chaos init rules", { timeout: 120_000 }, async () => {
+test("New Project creates and opens a starter project with the likha init rules", { timeout: 120_000 }, async () => {
   const parent = path.join(tempRoot, "projects");
   mkdirSync(parent);
   mkdirSync(path.join(parent, "taken"));
@@ -293,8 +294,8 @@ test("New Project creates and opens a starter project with the chaos init rules"
 
   // The project is created, opened, and its entry file is shown.
   await page.locator('.tab[data-path="src/index.ts"]').waitFor();
-  assert.match(await page.title(), /fresh-app - Origin Studio/);
-  assert.match(await page.locator(".status-bar").innerText(), /Origin Studio project/);
+  assert.match(await page.title(), /fresh-app - LIKHA/);
+  assert.match(await page.locator(".status-bar").innerText(), /LIKHA project/);
   await shot(page, "07-new-project");
   const root = path.join(parent, "fresh-app");
   for (const file of getStarterFiles("fresh-app")) {

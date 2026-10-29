@@ -107,8 +107,8 @@ export class OriginConnection {
       return result;
     }
     if (!result.value.permissions.includes("read")) {
-      this.setState({ state: "unauthorized", reason: "forbidden", detail: "The credential grants no read access, so Origin Studio cannot use it." });
-      return fail("FORBIDDEN", "The credential grants no read access, so Origin Studio cannot use it.");
+      this.setState({ state: "unauthorized", reason: "forbidden", detail: "The credential grants no read access, so LIKHA cannot use it." });
+      return fail("FORBIDDEN", "The credential grants no read access, so LIKHA cannot use it.");
     }
     this.credential = credential;
     const saved = await this.deps.vault.save(credential.secret);

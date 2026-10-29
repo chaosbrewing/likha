@@ -1,4 +1,4 @@
-// Live read-only integration of the built Origin Studio against a REAL ORIGIN
+// Live read-only integration of the built LIKHA against a REAL ORIGIN
 // server over the HTTP transport (no mocks). Runs only when the environment
 // names the server and the credentials; otherwise it is skipped.
 //

@@ -34,17 +34,43 @@ jobs:
       # Drives the built desktop app with Playwright. Moves one temporary file to the Recycle Bin.
       - run: npm run test:e2e
 
+      # Real Windows command shims: npm link creates likha(.cmd/.ps1) and the temporary
+      # chaos alias; each must run from Command Prompt and PowerShell, and unlink must remove them.
+      - name: Verify likha and chaos command shims (Command Prompt, PowerShell)
+        shell: pwsh
+        run: |
+          npm link -w @studio/cli
+          $bin = (npm prefix -g).Trim()
+          foreach ($f in "likha.cmd","likha.ps1","chaos.cmd","chaos.ps1") {
+            if (-not (Test-Path (Join-Path $bin $f))) { throw "missing shim $f" }
+          }
+          cmd /c "likha --version" ; if ($LASTEXITCODE -ne 0) { throw "cmd: likha --version failed" }
+          cmd /c "likha help"      ; if ($LASTEXITCODE -ne 0) { throw "cmd: likha help failed" }
+          cmd /c "chaos --version" ; if ($LASTEXITCODE -ne 0) { throw "cmd: chaos alias failed" }
+          powershell -NoProfile -ExecutionPolicy Bypass -Command 'likha status; exit $LASTEXITCODE'
+          if ($LASTEXITCODE -ne 0) { throw "PowerShell 5.1: likha status failed" }
+          $work = Join-Path $env:RUNNER_TEMP "likha-init"
+          New-Item -ItemType Directory -Force $work | Out-Null
+          Push-Location $work
+          likha init test-project ; if ($LASTEXITCODE -ne 0) { throw "likha init failed" }
+          if (-not (Test-Path test-project/package.json)) { throw "init produced no package.json" }
+          Pop-Location
+          npm unlink -g @studio/cli
+          foreach ($f in "likha.cmd","likha.ps1","chaos.cmd","chaos.ps1") {
+            if (Test-Path (Join-Path $bin $f)) { throw "shim $f was not removed" }
+          }
+
       # Unsigned installer and portable folder; signing needs the WIN_CSC_* secrets (see README).
       - run: npm run package
 
-      # Starts the packaged OriginStudio.exe (with the release fuses) over the DevTools protocol.
+      # Starts the packaged LIKHA.exe (with the release fuses) over the DevTools protocol.
       - run: npm run test:package
 
       - uses: actions/upload-artifact@v4
         with:
-          name: OriginStudio-windows-x64
+          name: LIKHA-windows-x64
           path: |
-            apps/ide/release/dist/OriginStudio-Setup-*.exe
+            apps/ide/release/dist/LIKHA-Setup-*.exe
             apps/ide/release/dist/latest.yml
           if-no-files-found: error
           retention-days: 14

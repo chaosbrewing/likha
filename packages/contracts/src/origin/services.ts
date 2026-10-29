@@ -33,7 +33,7 @@ export interface BinhiSiteSummary {
   updatedAt: string;
 }
 
-/** A request to open a site in BINHI's editor from Origin Studio. BINHI decides and answers with where to go. */
+/** A request to open a site in BINHI's editor from LIKHA. BINHI decides and answers with where to go. */
 export interface BinhiEditorHandoff {
   handoffId: string;
   siteId: string;

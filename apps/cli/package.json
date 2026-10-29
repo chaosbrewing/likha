@@ -2,10 +2,11 @@
   "name": "@studio/cli",
   "version": "0.1.0",
   "private": true,
-  "description": "chaos: the Origin Studio command-line interface.",
+  "description": "likha: the LIKHA command-line interface.",
   "type": "module",
   "bin": {
-    "chaos": "dist/index.js"
+    "likha": "dist/index.js",
+    "chaos": "dist/chaos-alias.js"
   },
   "files": [
     "dist"

@@ -39,7 +39,7 @@ export function developmentCsp(devServerUrl: string): string {
 }
 
 /**
- * True only for pages served by Origin Studio itself: the app:// protocol, or
+ * True only for pages served by LIKHA itself: the app:// protocol, or
  * the local Vite dev server in development mode. IPC from anything else is refused.
  */
 export function isTrustedRendererUrl(url: string, devServerUrl: string | null): boolean {

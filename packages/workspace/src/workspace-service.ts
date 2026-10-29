@@ -316,10 +316,10 @@ export class WorkspaceService {
       }
       if (options.expectedVersion !== null) {
         if (current === null) {
-          return fail("CONFLICT", `"${rel}" was deleted or moved outside Origin Studio.`);
+          return fail("CONFLICT", `"${rel}" was deleted or moved outside LIKHA.`);
         }
         if (fileVersion(current) !== options.expectedVersion) {
-          return fail("CONFLICT", `"${rel}" was changed outside Origin Studio since it was opened.`);
+          return fail("CONFLICT", `"${rel}" was changed outside LIKHA since it was opened.`);
         }
       }
     }

@@ -27,7 +27,7 @@ export interface IntegrationAdapter {
 
 /* ---------- ORIGIN Core: canonical project identity and state ---------- */
 
-/** ORIGIN's canonical project identifier. Opaque to Origin Studio. */
+/** ORIGIN's canonical project identifier. Opaque to LIKHA. */
 export type OriginProjectId = string & { readonly __brand: "OriginProjectId" };
 
 export type OriginPermission = "read" | "write" | "admin";
@@ -102,7 +102,7 @@ export type WorkflowEvent =
 
 export interface DeploymentHandoff {
   projectId: OriginProjectId;
-  /** Origin Studio prepares the request; ORIGIN governs approval and execution. */
+  /** LIKHA prepares the request; ORIGIN governs approval and execution. */
   requestedBy: string;
   sourceRevision: string;
 }

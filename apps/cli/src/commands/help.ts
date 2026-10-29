@@ -5,7 +5,7 @@ export function helpCommand(): void {
   console.log(`${PRODUCT_NAME} CLI v${getCliVersion()}
 
 Usage:
-  chaos <command> [options]
+  likha <command> [options]
 
 Commands:
   init <name>      Create a new TypeScript project in a new folder <name>
@@ -18,8 +18,8 @@ Options:
   -v, --version    Show the CLI version
 
 Examples:
-  chaos init my-project
-  chaos status`);
+  likha init my-project
+  likha status`);
 }
 
 export function versionCommand(): void {

@@ -85,7 +85,7 @@ test("terminal session lifecycle: create, data, input, resize, exit", () => {
   assert.deepEqual(args, ["-NoLogo"]);
   assert.equal(options.cwd, "C:\\project");
   assert.equal(options.cols, 100);
-  assert.equal(options.env.TERM_PROGRAM, "OriginStudio");
+  assert.equal(options.env.TERM_PROGRAM, "LIKHA");
   assert.ok(!("SECRET_UNDEFINED" in options.env));
 
   ptys[0]!.emitData("PS> ");

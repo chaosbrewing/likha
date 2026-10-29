@@ -258,7 +258,7 @@ export function TerminalPanel({ host, visible, scripts, apiRef, log }: TerminalP
       ) : null}
       {tabs.find((tab) => tab.id === activeId)?.policyHint ? (
         <p className="panel-message">
-          Windows PowerShell 5.1: if <code>chaos</code> or <code>npm</code> is blocked by the execution policy, use <code>chaos.cmd</code> / <code>npm.cmd</code>, or
+          Windows PowerShell 5.1: if <code>likha</code> or <code>npm</code> is blocked by the execution policy, use <code>likha.cmd</code> / <code>npm.cmd</code>, or
           open a PowerShell 7 terminal.
         </p>
       ) : null}

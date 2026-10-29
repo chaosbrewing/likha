@@ -12,7 +12,7 @@ import {
   type Result
 } from "@studio/contracts";
 
-const DETAIL = "Not connected. Origin Studio is running in local mode; the origin-core feature is off.";
+const DETAIL = "Not connected. LIKHA is running in local mode; the origin-core feature is off.";
 
 function status(system: IntegrationStatus["system"], contractVersion: number): IntegrationStatus {
   return { system, connected: false, transport: "none", contractVersion, detail: DETAIL };
@@ -23,7 +23,7 @@ async function notConnected<T>(): Promise<Result<T>> {
 }
 
 /**
- * The adapters Origin Studio uses when the origin-core feature is off: every
+ * The adapters LIKHA uses when the origin-core feature is off: every
  * ORIGIN system reports itself as offline and every call fails with
  * NOT_CONNECTED. Local editing never depends on them.
  */
