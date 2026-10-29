@@ -42,8 +42,13 @@ environment that integrates with ORIGIN.
    `chaos` shim that points at a previous checkout keeps running that old build until it is
    unlinked or relinked.
 
-## Removal plan for the alias
+## Removal plan for the alias (decided: Founder, D19)
 
-Remove the `chaos` entry from `apps/cli/package.json` `bin`, delete
-`apps/cli/src/chaos-alias.ts` and its tests in the release after the first LIKHA release,
-only on founder approval.
+The `chaos` alias stays for the first LIKHA release and is removed in the release after
+it, once the first release has been available for one full release cycle. Nothing is
+removed before then, and removal needs a founder go-ahead at that time.
+
+Removal means: delete the `chaos` entry from `apps/cli/package.json` `bin`, delete
+`apps/cli/src/chaos-alias.ts` and its tests, and drop `chaos` from the CI shim step. The
+release notes must say so one release earlier. Removing a global `chaos` shim on a user's
+machine is never done by an installer; users unlink it themselves (`npm unlink -g @studio/cli`).
