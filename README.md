@@ -97,7 +97,7 @@ were checked.
 ### Feature flags
 
 Work that is not part of the default experience yet is off unless you turn it on. Create
-`%AppData%\LIKHA\features.json`:
+`%AppData%\Origin Studio\features.json`:
 
 ```json
 { "origin-core": true }
@@ -113,13 +113,13 @@ characters, the format ORIGIN issues). The key must have been issued **with LIKH
 access** (ORIGIN's `project.read` scope, a checkbox on ORIGIN's API keys page); a key without it,
 including every key issued before that option existed, is refused as *forbidden* and never
 stored. A key ORIGIN accepts is verified with ORIGIN first and only then
-stored, encrypted with your Windows user key, in `%AppData%\LIKHA\origin-credential.bin`.
+stored, encrypted with your Windows user key, in `%AppData%\Origin Studio\origin-credential.bin`.
 It is never written to a project, never logged, and used for reads only. **Disconnect** forgets
 it; **Refresh ORIGIN Status** re-verifies it. A key ORIGIN rejects (invalid, expired, revoked, or issued without read access) is
 forgotten at once and the status bar says why; when ORIGIN cannot be reached the status bar
 shows **unavailable**, the key is kept, and everything else keeps working.
 
-*Where ORIGIN is.* `%AppData%\LIKHA\origin.json` names the transport:
+*Where ORIGIN is.* `%AppData%\Origin Studio\origin.json` names the transport:
 
 ```json
 { "transport": "mock" }

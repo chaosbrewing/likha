@@ -130,7 +130,7 @@ asynchronous path.
 
 ## Feature flags
 
-`apps/ide/electron/features.ts` reads `%AppData%\LIKHA\features.json` (an object of
+`apps/ide/electron/features.ts` reads `%AppData%\Origin Studio\features.json` (an object of
 booleans keyed by flag name) and the `ORIGIN_STUDIO_FEATURES` environment variable (a
 comma-separated list that turns flags on, used by tests). Every flag is off by default. The
 only flag today is `origin-core`.
@@ -156,7 +156,7 @@ That test also checks that the shipped language server starts under the fuses.
 
 ## Persistence
 
-`%AppData%\LIKHA\app-state.json` stores window bounds/maximized state and the last workspace folder (validated against current displays on start). `features.json` in the same folder holds feature flags, `origin.json` the ORIGIN transport, and `origin-credential.bin` the encrypted ORIGIN credential (present only while connected). Logs are in `%AppData%\LIKHA\logs\main.log`.
+`%AppData%\Origin Studio\app-state.json` stores window bounds/maximized state and the last workspace folder (validated against current displays on start). `features.json` in the same folder holds feature flags, `origin.json` the ORIGIN transport, and `origin-credential.bin` the encrypted ORIGIN credential (present only while connected). Logs are in `%AppData%\Origin Studio\logs\main.log`.
 
 ## Continuous integration
 
