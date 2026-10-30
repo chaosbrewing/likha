@@ -307,7 +307,7 @@ Windows' default `Restricted` execution policy, **Windows PowerShell 5.1** refus
 ## Repository layout
 
 ```text
-origin-studio/
+likha/
 ├── apps/
 │   ├── cli/                  @studio/cli: the `likha` command
 │   └── ide/                  @studio/ide: desktop IDE

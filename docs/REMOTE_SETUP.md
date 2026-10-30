@@ -1,4 +1,10 @@
-# GitHub remote and CI setup plan (Phase 7, not executed)
+# GitHub remote and CI setup plan (Phase 7, historical)
+
+> **Update (2026-10-29):** this plan has since been carried out. The repository was renamed
+> to `chaosbrewing/likha` (GitHub redirects the old `origin-studio` URLs), `main` is the
+> default branch, and `main` is protected as in step 4. The commands below use the current
+> repository name. Step 4's original command failed in PowerShell (`-f` sends the text
+> "true", not a boolean); it is replaced by a JSON body that works.
 
 **Status: plan only.** The repository has no remote and nothing has been pushed. Creating the
 repository and pushing branches need the owner's go-ahead; the steps below are what to run
@@ -22,14 +28,14 @@ once that is given. Nothing in this document was executed.
 1. **Create the repository** (owner decision: private, matching ORIGIN):
 
    ```powershell
-   gh repo create chaosbrewing/origin-studio --private --description "Origin Studio desktop IDE and chaos CLI (Chaos Origins)" --disable-wiki
+   gh repo create chaosbrewing/likha --private --description "LIKHA: Windows desktop IDE and likha CLI for ORIGIN" --disable-wiki
    ```
 
 2. **Add the remote and push the lineage**, oldest first, so each phase branch is
    reviewable on its own:
 
    ```powershell
-   git remote add origin https://github.com/chaosbrewing/origin-studio.git
+   git remote add origin https://github.com/chaosbrewing/likha.git
    git push -u origin phase-3-chaos-cli phase-4-ide-foundation phase-5-release-readiness phase-6-intelligence-origin-ci
    git push -u origin phase-7-origin-connectivity
    ```
@@ -39,7 +45,7 @@ once that is given. Nothing in this document was executed.
    ```powershell
    git branch main phase-6-intelligence-origin-ci
    git push -u origin main
-   gh repo edit chaosbrewing/origin-studio --default-branch main
+   gh repo edit chaosbrewing/likha --default-branch main
    ```
 
    Phase 7 then becomes a pull request from `phase-7-origin-connectivity` into `main`, which
@@ -49,7 +55,15 @@ once that is given. Nothing in this document was executed.
    pull request, no force pushes:
 
    ```powershell
-   gh api -X PUT repos/chaosbrewing/origin-studio/branches/main/protection -f required_status_checks[strict]=true -f "required_status_checks[contexts][]=Build, test and package (Windows)" -F enforce_admins=false -F required_pull_request_reviews[required_approving_review_count]=0 -F restrictions=null -F allow_force_pushes=false
+   @'
+   {
+     "required_status_checks": { "strict": true, "contexts": ["Build, test and package (Windows)"] },
+     "enforce_admins": false,
+     "required_pull_request_reviews": { "required_approving_review_count": 0 },
+     "restrictions": null,
+     "allow_force_pushes": false
+   }
+   '@ | gh api -X PUT repos/chaosbrewing/likha/branches/main/protection --input -
    ```
 
 5. **Secrets** (later, owner): `WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD` for signing and
