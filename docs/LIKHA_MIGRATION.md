@@ -24,7 +24,8 @@ environment that integrates with ORIGIN.
 | `originStudio` key in project `package.json` | Existing projects stay valid and are never rewritten. `likha status` and the IDE validate the same key. |
 | `appId` `dev.chaosorigins.originstudio` | Keeps the installed-app identity so the installer upgrades in place. |
 | `ORIGIN_STUDIO_*` environment variables | Existing scripts and CI keep working. |
-| `@studio/*` package names and the `origin-studio` repo/root package | Internal; renaming them is a separate proposal (D03). |
+| `@studio/*` package names and the `origin-studio` root package | Internal; renaming them is a separate proposal (D03). |
+| GitHub repository | Renamed to `chaosbrewing/likha` (D21). GitHub redirects the old URLs; update local remotes with `git remote set-url origin https://github.com/chaosbrewing/likha.git`. |
 | ORIGIN integration contracts | Only comments and user-facing messages changed; no schema, route or identifier changed. |
 | Historical records (`docs/qa/*`, `docs/REMOTE_SETUP.md`) | They describe what was true when written. |
 
